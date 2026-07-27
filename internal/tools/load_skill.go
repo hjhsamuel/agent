@@ -51,7 +51,7 @@ func (l *LoadSkill) RequireApproval() bool {
 	return false
 }
 
-func NewLoadSkill(skills []*skills.Skill) Tool {
+func NewLoadSkill() Tool {
 	return &LoadSkill{}
 }
 
