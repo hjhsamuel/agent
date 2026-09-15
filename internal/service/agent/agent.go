@@ -1,4 +1,4 @@
-package internal
+package agent
 
 type Agent struct {
 }
