@@ -11,6 +11,7 @@ import (
 )
 
 type Agent struct {
+	id  string
 	ctx context.Context
 
 	prompt string

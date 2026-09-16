@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hjhsamuel/agent/internal/prompts"
+	"github.com/hjhsamuel/agent/internal/service/agent/prompts"
 	"github.com/hjhsamuel/agent/pkg/provider"
 )
 
