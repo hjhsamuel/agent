@@ -21,10 +21,10 @@ type Manager struct {
 func (m *Manager) Start() {
 	m.wg.Add(len(m.slots))
 	for _, slot := range m.slots {
-		go func() {
+		go func(slot *shard) {
 			defer m.wg.Done()
 			slot.Do()
-		}()
+		}(slot)
 	}
 }
 
