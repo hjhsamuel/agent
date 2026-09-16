@@ -18,6 +18,4 @@ type Service struct {
 	skills []*skill.Skill
 
 	agents *shard.Manager
-
-	event chan *notify.ChannelEvent
 }

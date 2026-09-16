@@ -1,103 +1,80 @@
 package notify
 
 import (
-	"container/heap"
+	"context"
 	"sync"
-	"time"
 
+	"github.com/hjhsamuel/agent/pkg"
 	"github.com/hjhsamuel/agent/pkg/ringbuffer"
 )
 
+const ShardCount = 32
+
 type Manager struct {
-	lock sync.RWMutex
+	mask  uint64
+	slots []*shard
 
-	capacity uint64
-	buffers  map[string]*bufferItem[SSEvent]
-
-	heap bufferHeap[SSEvent]
-	ttl  time.Duration
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
-func (m *Manager) Get(id string) (*ringbuffer.RingBuffer[SSEvent], bool) {
-	m.lock.RLock()
-	defer m.lock.RUnlock()
-
-	buffer, ok := m.buffers[id]
-	return buffer.buffer, ok
+func (m *Manager) Start() {
+	m.wg.Add(len(m.slots))
+	for _, slot := range m.slots {
+		go func() {
+			defer m.wg.Done()
+			slot.Do()
+		}()
+	}
 }
 
-func (m *Manager) GetOrCreate(id string) (*ringbuffer.RingBuffer[SSEvent], error) {
-	if buffer, ok := m.Get(id); ok {
-		return buffer, nil
-	}
-
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	// 重复检查一次
-	if buffer, ok := m.buffers[id]; ok {
-		return buffer.buffer, nil
-	}
-
-	buffer, err := ringbuffer.NewRingBuffer[SSEvent](m.capacity)
-	if err != nil {
-		return nil, err
-	}
-
-	item := &bufferItem[SSEvent]{
-		id:     id,
-		active: time.Now(),
-		buffer: buffer,
-	}
-	m.buffers[id] = item
-	m.heap.Push(item)
-
-	return buffer, nil
+func (m *Manager) Close() {
+	m.cancel()
+	m.wg.Wait()
 }
 
-func (m *Manager) Touch(id string, t time.Time) bool {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	item, ok := m.buffers[id]
-	if !ok {
-		return false
-	}
-
-	item.active = t
-	heap.Fix(&m.heap, item.index)
-
-	return true
+func (m *Manager) hash(id string) *shard {
+	index := pkg.HashString(id) & m.mask
+	return m.slots[index]
 }
 
-func (m *Manager) PopExpired(t time.Time) (*ringbuffer.RingBuffer[SSEvent], bool) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	if len(m.heap) == 0 {
-		return nil, false
-	}
-
-	item := m.heap[0]
-	if !item.active.Add(m.ttl).Before(t) {
-		return nil, false
-	}
-
-	heap.Pop(&m.heap)
-	delete(m.buffers, item.id)
-
-	return item.buffer, true
+func (m *Manager) GetOrCreate(id string) *ringbuffer.RingBuffer[SSEvent] {
+	slot := m.hash(id)
+	return slot.GetOrCreate(id)
 }
 
-func NewManager(capacity uint64) *Manager {
+func (m *Manager) Touch(id string) {
+	slot := m.hash(id)
+	slot.Heartbeat(id)
+}
+
+func (m *Manager) PushEvent(id string, event SSEvent) {
+	slot := m.hash(id)
+	slot.PushEvent(id, event)
+}
+
+func (m *Manager) Consumer(id string, seq uint64) *ringbuffer.Consumer[SSEvent] {
+	slot := m.hash(id)
+	buffer := slot.GetOrCreate(id)
+	return buffer.Subscribe(seq)
+}
+
+func NewManager(cnt int) *Manager {
+	// 数量为 2 ^ n，使用位运算保证性能
+	if cnt <= 0 || cnt&(cnt-1) != 0 {
+		cnt = ShardCount
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
 	m := &Manager{
-		capacity: capacity,
-		buffers:  make(map[string]*bufferItem[SSEvent]),
-		heap:     make(bufferHeap[SSEvent], 0),
-		ttl:      time.Second * 30,
+		slots:  make([]*shard, cnt),
+		mask:   uint64(cnt - 1),
+		cancel: cancel,
 	}
-
-	heap.Init(&m.heap)
+	for i := range m.slots {
+		m.slots[i] = newShard(ctx, ringbuffer.Capacity)
+	}
 
 	return m
 }
