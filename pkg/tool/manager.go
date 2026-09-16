@@ -73,6 +73,17 @@ func (m *Manager) Get(name string) (Tool, error) {
 	return tool, nil
 }
 
+func (m *Manager) All() []Tool {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	tools := make([]Tool, 0, len(m.toolMap))
+	for _, tool := range m.toolMap {
+		tools = append(tools, tool)
+	}
+	return tools
+}
+
 func NewManager() *Manager {
 	return &Manager{
 		toolMap: make(map[string]Tool),

@@ -4,6 +4,11 @@ import (
 	"github.com/gin-contrib/sse"
 )
 
+type ChannelEvent struct {
+	ID    string
+	Event SSEvent
+}
+
 type SSEvent interface {
 	Event() sse.Event
 }

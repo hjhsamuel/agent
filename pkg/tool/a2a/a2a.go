@@ -11,7 +11,10 @@ import (
 )
 
 func GetA2ATools(addr string) ([]tool.Tool, error) {
-	card, err := agentcard.DefaultResolver.Resolve(context.Background(), addr)
+	card, err := agentcard.DefaultResolver.Resolve(
+		context.Background(),
+		addr,
+	)
 	if err != nil {
 		return nil, err
 	}
