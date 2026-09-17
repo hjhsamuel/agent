@@ -18,8 +18,8 @@ type Message struct {
 	ToolCalls  []*ToolCall `json:"tool_calls"`
 	ToolCallId string      `json:"tool_call_id"`
 
-	Reasoning string     `json:"reasoning"`
-	Usage     TokenUsage `json:"usage"`
+	Reasoning string      `json:"reasoning"`
+	Usage     *TokenUsage `json:"usage"`
 }
 
 type Role string

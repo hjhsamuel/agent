@@ -100,7 +100,7 @@ func (o *OpenAI) Chat(
 
 	out := &Message{
 		Role: RoleAssistant,
-		Usage: TokenUsage{
+		Usage: &TokenUsage{
 			Total:       response.Usage.TotalTokens,
 			Prompt:      response.Usage.PromptTokens,
 			Cached:      response.Usage.PromptTokensDetails.CachedTokens,
@@ -164,7 +164,7 @@ func (o *OpenAI) Stream(
 
 	message := &Message{
 		Role: RoleAssistant,
-		Usage: TokenUsage{
+		Usage: &TokenUsage{
 			Total:       acc.Usage.TotalTokens,
 			Prompt:      acc.Usage.PromptTokens,
 			Cached:      acc.Usage.PromptTokensDetails.CachedTokens,

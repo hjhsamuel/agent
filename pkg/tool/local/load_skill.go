@@ -3,7 +3,6 @@ package local
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,11 +55,17 @@ func (l *LoadSkill) Define() openai.ChatCompletionToolUnionParam {
 func (l *LoadSkill) Execute(ctx context.Context, token, content string) (*tool.ToolResult, error) {
 	var params map[string]string
 	if err := json.Unmarshal([]byte(content), &params); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %v", err)
+		return &tool.ToolResult{
+			Status:  tool.TaskFailed,
+			Content: fmt.Sprintf("invalid arguments: %v", err),
+		}, nil
 	}
 
 	if params["name"] == "" {
-		return nil, errors.New("invalid arguments: name is required")
+		return &tool.ToolResult{
+			Status:  tool.TaskFailed,
+			Content: "invalid arguments: name is required",
+		}, nil
 	}
 
 	var path string
@@ -74,17 +79,29 @@ func (l *LoadSkill) Execute(ctx context.Context, token, content string) (*tool.T
 
 	body, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("loading skill error: %v", err)
+		return &tool.ToolResult{
+			Status:  tool.TaskFailed,
+			Content: fmt.Sprintf("loading skill error: %v", err),
+		}, nil
 	}
-	return &tool.ToolResult{Content: string(body)}, nil
+	return &tool.ToolResult{
+		Status:  tool.TaskCompleted,
+		Content: string(body),
+	}, nil
 }
 
 func (l *LoadSkill) Resume(ctx context.Context, token, contextId, taskId string, content string) (*tool.ToolResult, error) {
-	return nil, errors.New("not supported")
+	return &tool.ToolResult{
+		Status:  tool.TaskFailed,
+		Content: "local tool not support resume",
+	}, nil
 }
 
 func (l *LoadSkill) Check(ctx context.Context, token, contextId, taskId string) (*tool.ToolResult, error) {
-	return nil, errors.New("not supported")
+	return &tool.ToolResult{
+		Status:  tool.TaskFailed,
+		Content: "tool not has no task state",
+	}, nil
 }
 
 func NewLoadSkill() tool.Tool {

@@ -21,6 +21,7 @@ func (s *Service) ListenSSE(
 	var (
 		conversationId string
 		err            error
+		events         []*notify.InputRequiredItem
 	)
 	if id == "" {
 		conversationId, err = s.store.CreateConversation(&schema.Conversation{
@@ -42,7 +43,24 @@ func (s *Service) ListenSSE(
 		if len(objs) == 0 {
 			return errors.New("conversation not found")
 		}
-		conversationId = objs[0].ID.Hex()
+
+		conversationId = id
+
+		// 检索会话是否存在需要用户输入的任务
+		tasks, err := s.store.ListRemoteTaskStores(bson.M{
+			"conversation": objectId,
+			"status":       schema.RemoteTaskWaitingInput,
+		})
+		if err != nil {
+			return err
+		}
+		for _, task := range tasks {
+			events = append(events, &notify.InputRequiredItem{
+				ContextId: task.ContextId,
+				TaskId:    task.TaskId,
+				Content:   task.Content,
+			})
+		}
 	}
 
 	consumer := s.notify.Consumer(conversationId, seq)
@@ -57,6 +75,11 @@ func (s *Service) ListenSSE(
 	// 创建缓存后回传会话id
 	c.Render(-1, (&notify.InitEvent{ID: conversationId}).Event())
 	c.Writer.Flush()
+
+	if len(events) != 0 {
+		c.Render(-1, (&notify.InputRequiredEvent{Events: events}).Event())
+		c.Writer.Flush()
+	}
 
 	ticker := time.NewTimer(time.Second * 10)
 	defer ticker.Stop()

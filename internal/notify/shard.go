@@ -19,7 +19,7 @@ type shard struct {
 	ttl  time.Duration
 
 	ctx       context.Context
-	events    chan *ChannelEvent
+	events    chan *UpperEvent
 	heartbeat chan string
 }
 
@@ -32,7 +32,7 @@ func (s *shard) Heartbeat(id string) {
 }
 
 func (s *shard) PushEvent(id string, event SSEvent) {
-	s.events <- &ChannelEvent{ID: id, Event: event}
+	s.events <- &UpperEvent{ID: id, Event: event}
 }
 
 func (s *shard) Do() {
@@ -145,7 +145,7 @@ func newShard(ctx context.Context, capacity uint64) *shard {
 		buffers:   make(map[string]*bufferItem[SSEvent]),
 		heap:      make(bufferHeap[SSEvent], 0),
 		ttl:       time.Second * 30,
-		events:    make(chan *ChannelEvent, 1024),
+		events:    make(chan *UpperEvent, 1024),
 		heartbeat: make(chan string, 32),
 		ctx:       ctx,
 	}
