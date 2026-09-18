@@ -261,3 +261,42 @@ func (d *Dao) AddMessageWithToolCalls(
 
 	return id, nil
 }
+
+func (d *Dao) ConversationFinished(conversationId bson.ObjectID, message *schema.Message) error {
+	var (
+		conversationColl = d.getCollection(schema.ConversationCollection)
+		messageColl      = d.getCollection(schema.MessageCollection)
+	)
+
+	ctx := context.Background()
+
+	session, err := d.StartSession()
+	if err != nil {
+		return err
+	}
+	defer session.EndSession(ctx)
+
+	_, err = session.WithTransaction(context.Background(), func(sc context.Context) (any, error) {
+		message.Conversation = conversationId
+		_, err = messageColl.InsertOne(sc, message)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = conversationColl.UpdateOne(
+			sc,
+			bson.M{"_id": conversationId},
+			bson.M{"$set": bson.M{"status": schema.ConversationDone}},
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

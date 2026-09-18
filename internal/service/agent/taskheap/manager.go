@@ -55,6 +55,15 @@ func (m *Manager) Len() int {
 	return len(m.heap)
 }
 
+func (m *Manager) PeekAll() []*TaskItem {
+	if len(m.heap) == 0 {
+		return nil
+	}
+	dst := make([]*TaskItem, len(m.heap))
+	copy(dst, m.heap)
+	return dst
+}
+
 func NewManager() *Manager {
 	return &Manager{
 		buffer: make(map[string]*TaskItem),

@@ -7,6 +7,7 @@ import (
 
 	"github.com/hjhsamuel/agent/internal/db/schema"
 	"github.com/hjhsamuel/agent/internal/notify"
+	"github.com/hjhsamuel/agent/internal/service/agent/resolver"
 	"github.com/hjhsamuel/agent/internal/service/agent/taskheap"
 	"github.com/hjhsamuel/agent/pkg/backoff"
 	"github.com/hjhsamuel/agent/pkg/provider"
@@ -33,15 +34,12 @@ func (a *Agent) loop() {
 	}
 
 	var (
-		contextSize int64
+		contextLimit = int64(float64(a.provider.Capabilities.ContextLimit) * 0.6)
+		contextSize  int64
 	)
 
 	for {
-		if a.runtime.tasks.Len() != 0 {
-			// 等待
-		}
-
-		if contextSize >= a.provider.Capabilities.ContextLimit {
+		if contextSize >= contextLimit {
 			// 触发压缩
 		}
 
@@ -84,7 +82,10 @@ func (a *Agent) loop() {
 			return
 		}
 
+		contextSize = response.Usage.Prompt + response.Usage.Completions - response.Usage.Reasoning
+
 		if len(response.ToolCalls) != 0 {
+			// 需要调用工具
 			// 添加记录
 			toolCalls := make([]*schema.ActiveTool, 0, len(response.ToolCalls))
 			for _, toolCall := range response.ToolCalls {
@@ -104,6 +105,17 @@ func (a *Agent) loop() {
 				if err != nil {
 					return
 				}
+			}
+		} else {
+			// 没有工具调用，结束对话
+			_ = a.store.ConversationFinished(a.id, a.provider2StoreMessage(response))
+			return
+		}
+
+		if a.runtime.tasks.Len() != 0 {
+			err = a.waitToolResult()
+			if err != nil {
+				return
 			}
 		}
 	}
@@ -255,6 +267,10 @@ func (a *Agent) toolFinished(taskId, toolCallId, content string) error {
 }
 
 func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+
 	taskIds := make([]string, 0, len(tasks))
 	for _, task := range tasks {
 		taskIds = append(taskIds, task.TaskId)
@@ -266,6 +282,8 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 	if err != nil {
 		return err
 	}
+
+	var resolveItems []*resolver.InputRequiredItem
 
 	for _, obj := range objs {
 		switch obj.Status {
@@ -291,7 +309,19 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 					ToolName:   obj.Tool.Name,
 				})
 			case tool.TaskInputRequired:
-				// TODO
+				var inputSchema map[string]any
+				function := t.Define().GetFunction()
+				if function != nil {
+					inputSchema = function.Parameters
+				}
+				builtMessage, _ := resolver.BuildInputRequiredMessage(obj.Tool.ToolCallId, result.Content, inputSchema)
+				resolveItems = append(resolveItems, &resolver.InputRequiredItem{
+					ContextId:  obj.ContextId,
+					TaskId:     obj.TaskId,
+					ToolCallId: obj.Tool.ToolCallId,
+					ToolName:   obj.Tool.Name,
+					Message:    builtMessage,
+				})
 			case tool.TaskCompleted, tool.TaskFailed, tool.TaskCanceled, tool.TaskRejected, tool.TaskAuthRequired:
 				err = a.toolFinished(obj.TaskId, obj.Tool.ToolCallId, result.Content)
 				if err != nil {
@@ -306,21 +336,53 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 				ToolName:   obj.Tool.Name,
 			})
 		case schema.RemoteTaskInputted:
-			err = a.toolResume(obj.ContextId, obj.TaskId, obj.Tool.Name, obj.Content)
-			// TODO
+			err = a.toolResume(obj.ContextId, obj.TaskId, obj.Tool.Name, obj.Tool.ToolCallId, obj.Content)
+			if err != nil {
+				return err
+			}
 		case schema.RemoteTaskDone:
 			// 正常不会进入
 			continue
 		}
 	}
+
+	err = a.resolveInputRequired(resolveItems...)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (a *Agent) toolResume(contextId, taskId, name, content string) error {
-	t := a.tools[name]
-	result, err := t.Resume(context.Background(), a.user.Token, contextId, taskId, content)
+func (a *Agent) toolResume(contextId, taskId, toolName, toolCallId, content string) error {
+	t := a.tools[toolName]
+	_, err := t.Resume(context.Background(), a.user.Token, contextId, taskId, content)
 	if err != nil {
-
+		a.taskRequeue(&taskheap.TaskItem{
+			ContextId:  contextId,
+			TaskId:     taskId,
+			ToolCallId: toolCallId,
+			ToolName:   toolName,
+		})
+		return nil
 	}
+
+	err = a.store.UpdateRemoteTaskStore(
+		bson.M{"conversation": a.id, "context_id": contextId, "task_id": taskId},
+		bson.M{"$set": bson.M{"status": schema.RemoteTaskSubmitted}},
+	)
+	if err != nil {
+		return err
+	}
+
+	a.taskRequeue(&taskheap.TaskItem{
+		ContextId:  contextId,
+		TaskId:     taskId,
+		ToolCallId: toolCallId,
+		ToolName:   toolName,
+	})
+
+	return nil
 }
 
 func (a *Agent) taskRequeue(item *taskheap.TaskItem) {
@@ -329,21 +391,25 @@ func (a *Agent) taskRequeue(item *taskheap.TaskItem) {
 }
 
 func (a *Agent) waitToolResult() error {
+	// TODO
+	// 需要增加超长任务中断机制，避免因任务长时间运行导致 agent 死循环使资源无法释放
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
 	for {
-		if a.runtime.tasks.Len() == 0 {
-			return nil
-		}
-
 		select {
 		case <-a.ctx.Done():
 			return a.ctx.Err()
 		case now := <-ticker.C:
 			tasks := a.runtime.tasks.PopExpired(now)
-			a.toolCheck(tasks...)
+			err := a.toolCheck(tasks...)
+			if err != nil {
+				return err
+			}
+		}
 
+		if a.runtime.tasks.Len() == 0 {
+			return nil
 		}
 	}
 }

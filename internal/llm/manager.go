@@ -2,60 +2,81 @@ package llm
 
 import (
 	"errors"
+	"math/rand/v2"
 	"sync"
 
 	"github.com/hjhsamuel/agent/internal/db/schema"
+	"github.com/hjhsamuel/agent/pkg/kms"
 	"github.com/hjhsamuel/agent/pkg/provider"
 )
 
 type Manager struct {
-	lock sync.RWMutex
+	lock   sync.RWMutex
+	models map[schema.ModelType]*schema.Provider
 
-	providers    map[string]*LLM
-	defaultModel string
+	keys map[int]string
 }
 
-func (m *Manager) Get(model string) (*LLM, error) {
+func (m *Manager) Get(t schema.ModelType) (*LLM, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
-	if v, ok := m.providers[model]; ok {
-		return v, nil
+	model, ok := m.models[t]
+	if !ok {
+		return nil, errors.New("not found")
 	}
 
-	return nil, errors.New("provider not found")
+	if len(model.ApiKeys) == 0 {
+		return nil, errors.New("no available api keys")
+	}
+
+	var (
+		out string
+		err error
+	)
+	start := rand.IntN(len(model.ApiKeys))
+	for i := 0; i < len(model.ApiKeys); i++ {
+		index := start + i
+		if index >= len(model.ApiKeys) {
+			index -= len(model.ApiKeys)
+		}
+
+		apiKey := model.ApiKeys[index]
+		key, ok := m.keys[apiKey.Version]
+		if !ok {
+			continue
+		}
+		out, err = kms.Decrypt([]byte(key), apiKey.Ciphertext, apiKey.Nonce)
+		if err != nil {
+			continue
+		}
+	}
+
+	if out == "" {
+		return nil, errors.New("no available api keys")
+	}
+
+	client, err := provider.NewOpenAI(model.Url, out)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LLM{
+		Model:        model.Name,
+		Capabilities: model.Capabilities,
+		provider:     client,
+	}, nil
 }
 
-func (m *Manager) Set(
-	model string,
-	client provider.Provider,
-	capabilities *schema.ModelCapabilities,
-	isDefault bool,
-) error {
+func (m *Manager) Set(info *schema.Provider) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	m.providers[model] = &LLM{
-		Model:        model,
-		Capabilities: capabilities,
-		provider:     client,
-	}
-	if isDefault {
-		m.defaultModel = model
-	}
-
-	return nil
-}
-
-func (m *Manager) Default() *LLM {
-	m.lock.RLock()
-	defer m.lock.RUnlock()
-
-	return m.providers[m.defaultModel]
+	m.models[info.Type] = info
 }
 
 func NewManager() *Manager {
 	return &Manager{
-		providers: make(map[string]*LLM),
+		models: make(map[schema.ModelType]*schema.Provider),
 	}
 }
