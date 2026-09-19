@@ -7,10 +7,13 @@ require (
 	github.com/bombsimon/logrusr/v4 v4.2.0
 	github.com/gin-contrib/sse v1.1.2
 	github.com/gin-gonic/gin v1.12.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/joho/godotenv v1.5.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/openai/openai-go/v3 v3.61.0
 	github.com/sirupsen/logrus v1.10.2
 	go.mongodb.org/mongo-driver/v2 v2.9.1
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 

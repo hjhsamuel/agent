@@ -22,8 +22,12 @@ func (d *Dao) getCollection(name string) *mongo.Collection {
 	return d.Database(d.db).Collection(name)
 }
 
-func NewDao(info *MongoConfig) (*Dao, error) {
-	client, err := newMongoClient(info, logrus.StandardLogger())
+func NewDao(info *MongoConfig, dsn string) (*Dao, error) {
+	if info.DB == "" {
+		return nil, errors.New("database name is required")
+	}
+
+	client, err := newMongoClient(info, dsn, logrus.StandardLogger())
 	if err != nil {
 		return nil, err
 	}
@@ -47,10 +51,13 @@ type MongoAddr struct {
 	Port int
 }
 
-func newMongoClient(info *MongoConfig, logger *logrus.Logger) (*mongo.Client, error) {
-	dsn, err := getMongoDialector(info)
-	if err != nil {
-		return nil, err
+func newMongoClient(info *MongoConfig, dsn string, logger *logrus.Logger) (*mongo.Client, error) {
+	var err error
+	if dsn == "" {
+		dsn, err = getMongoDialector(info)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	opts := options.Client().ApplyURI(dsn)

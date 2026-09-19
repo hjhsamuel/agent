@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"sync"
 
+	"github.com/hjhsamuel/agent/config"
 	"github.com/hjhsamuel/agent/internal/db/schema"
 	"github.com/hjhsamuel/agent/pkg/kms"
 	"github.com/hjhsamuel/agent/pkg/provider"
@@ -75,8 +76,24 @@ func (m *Manager) Set(info *schema.Provider) {
 	m.models[info.Type] = info
 }
 
-func NewManager() *Manager {
+func NewManager(secrets []*config.SecretConfig) (*Manager, error) {
+	if len(secrets) == 0 {
+		return nil, errors.New("no secret set")
+	}
+
+	keys := make(map[int]string)
+	for _, item := range secrets {
+		if len(item.Key) != kms.KeyLength {
+			continue
+		}
+		keys[item.Version] = item.Key
+	}
+	if len(keys) == 0 {
+		return nil, errors.New("no available keys")
+	}
+
 	return &Manager{
 		models: make(map[schema.ModelType]*schema.Provider),
-	}
+		keys:   keys,
+	}, nil
 }
