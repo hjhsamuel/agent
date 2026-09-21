@@ -24,6 +24,10 @@ func (a *Agent) loopDefer() {
 	a.base.Exit <- a.id
 }
 
+func (a *Agent) calculateContextSize(message *provider.Message) int64 {
+	return message.Usage.Prompt + message.Usage.Completions - message.Usage.Reasoning
+}
+
 func (a *Agent) loop() {
 	defer a.runtime.wg.Done()
 	defer a.loopDefer()
@@ -42,6 +46,9 @@ func (a *Agent) loop() {
 		contextLimit = int64(float64(a.base.Provider.Capabilities.ContextLimit) * 0.6)
 		contextSize  int64
 	)
+	if len(a.runtime.OldMessages) != 0 {
+		contextSize = a.calculateContextSize(a.runtime.OldMessages[len(a.runtime.OldMessages)-1])
+	}
 
 	for {
 		if contextSize >= contextLimit {
@@ -51,6 +58,7 @@ func (a *Agent) loop() {
 		}
 
 		a.runtime.OldMessages = append(a.runtime.OldMessages, a.runtime.NewMessages...)
+		a.runtime.NewMessages = make([]*provider.Message, 0)
 		if !a.runtime.latestId.IsZero() {
 			a.runtime.oldId = a.runtime.latestId
 		}
@@ -89,7 +97,13 @@ func (a *Agent) loop() {
 			return
 		}
 
-		contextSize = response.Usage.Prompt + response.Usage.Completions - response.Usage.Reasoning
+		a.base.Up <- &notify.UpperEvent{
+			ID:    a.id.Hex(),
+			Event: &notify.DoneEvent{},
+		}
+
+		contextSize = a.calculateContextSize(response)
+		a.runtime.OldMessages = append(a.runtime.OldMessages, response)
 
 		if len(response.ToolCalls) != 0 {
 			// 需要调用工具

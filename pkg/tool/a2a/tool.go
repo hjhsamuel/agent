@@ -210,8 +210,8 @@ func FormatMessage(info *a2a.Message) string {
 	var b strings.Builder
 	for _, part := range info.Parts {
 		switch v := part.Content.(type) {
-		case *a2a.Text:
-			b.WriteString(string(*v))
+		case a2a.Text:
+			b.WriteString(string(v))
 			b.WriteString("\n")
 		}
 	}

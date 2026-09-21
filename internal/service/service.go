@@ -36,6 +36,10 @@ type Service struct {
 }
 
 func (s *Service) Start() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.ctx = ctx
+	s.cancel = cancel
+
 	s.notify.Start()
 
 	s.wg.Add(1)

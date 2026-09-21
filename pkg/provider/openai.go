@@ -122,6 +122,8 @@ func (o *OpenAI) Chat(
 		})
 	}
 
+	out.Content = choice.Message.Content
+
 	if v, ok := choice.Message.JSON.ExtraFields["reasoning_content"]; ok {
 		out.Reasoning = v.Raw()
 	}

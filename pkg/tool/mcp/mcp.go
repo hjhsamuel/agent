@@ -34,7 +34,7 @@ func GetMCPToolsWithContext(ctx context.Context, addr, token string) ([]tool.Too
 		}
 		t, err := NewMCP(
 			client,
-			fmt.Sprintf("%s:%s:%s", tool.McpTool, name, definition.Name),
+			fmt.Sprintf("%s_%s_%s", tool.McpTool, name, definition.Name),
 			addr,
 			definition,
 		)

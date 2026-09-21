@@ -84,11 +84,11 @@ func (s *Service) ListenSSE(
 		c.Writer.Flush()
 	}
 
-	ticker := time.NewTimer(time.Second * 10)
+	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-c.Done():
+		case <-c.Request.Context().Done():
 			return nil
 		case <-consumer.Notify():
 			if err := s.drainAndSendSSEvent(c, consumer); err != nil {
@@ -168,7 +168,7 @@ func (s *Service) agentEvent() {
 	for {
 		select {
 		case <-s.ctx.Done():
-			return
+			break
 		case id := <-s.done:
 			s.agents.Delete(id.Hex())
 			_ = s.store.UpdateConversation(

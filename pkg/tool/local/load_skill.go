@@ -30,7 +30,7 @@ func (l *LoadSkill) Define() openai.ChatCompletionToolUnionParam {
 		OfFunction: &openai.ChatCompletionFunctionToolParam{
 			Type: "function",
 			Function: shared.FunctionDefinitionParam{
-				Name:        string(tool.LocalTool + ":load_skill"),
+				Name:        string(tool.LocalTool + "_load_skill"),
 				Description: openai.String("Load the complete instructions or one text resource reference for one available skill. Call this before using a matching skill."),
 				Parameters: map[string]any{
 					"type": "object",

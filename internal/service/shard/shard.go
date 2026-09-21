@@ -37,10 +37,12 @@ func (s *shard) Del(id string) {
 	if v, ok := s.cancel[id]; ok {
 		v()
 	}
+	delete(s.cancel, id)
 }
 
 func newShard() *shard {
 	return &shard{
 		agents: make(map[string]agent.MainAgent),
+		cancel: make(map[string]context.CancelFunc),
 	}
 }

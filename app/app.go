@@ -34,6 +34,7 @@ func Start() error {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(request.AuthMiddleware)
 	request.SetTokenSalt(conf.Server.Salt)
 	api.Register(srv, r)
 

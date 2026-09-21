@@ -52,6 +52,7 @@ func NewMCP(client *mcp.Client, id, addr string, definition *mcp.Tool) (tool.Too
 		description: definition.Description,
 		addr:        addr,
 		parameters:  parameters,
+		client:      client,
 	}, nil
 }
 

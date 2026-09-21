@@ -29,7 +29,7 @@ func GetA2ATools(addr string) ([]tool.Tool, error) {
 	out := make([]tool.Tool, 0)
 	for _, skill := range card.Skills {
 		out = append(out, NewA2A(
-			fmt.Sprintf("%s:%s:%s", tool.A2ATool, name, skill.ID),
+			fmt.Sprintf("%s_%s_%s", tool.A2ATool, name, skill.ID),
 			skill.Description,
 			client,
 		))

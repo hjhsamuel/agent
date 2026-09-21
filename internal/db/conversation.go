@@ -18,7 +18,7 @@ func (d *Dao) CreateConversation(obj *schema.Conversation) (string, error) {
 	}
 
 	id := result.InsertedID.(bson.ObjectID)
-	return id.String(), nil
+	return id.Hex(), nil
 }
 
 func (d *Dao) GetConversation(filter bson.M) (*schema.Conversation, error) {
@@ -121,7 +121,7 @@ func (d *Dao) ListConversationCompactions(filter bson.M) ([]*schema.Compaction, 
 }
 
 func (d *Dao) AddConversationCompaction(obj *schema.Compaction) error {
-	collection := d.getCollection(schema.ConversationCollection)
+	collection := d.getCollection(schema.CompactCollection)
 	_, err := collection.InsertOne(context.Background(), obj)
 	if err != nil {
 		return err

@@ -62,7 +62,10 @@ func (s *shard) get(id string) (*ringbuffer.RingBuffer[SSEvent], bool) {
 	defer s.lock.RUnlock()
 
 	buffer, ok := s.buffers[id]
-	return buffer.buffer, ok
+	if !ok {
+		return nil, false
+	}
+	return buffer.buffer, true
 }
 
 func (s *shard) GetOrCreate(id string) *ringbuffer.RingBuffer[SSEvent] {
