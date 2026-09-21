@@ -1,13 +1,16 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/internal/db/schema"
+	"github.com/hjhsamuel/agent/internal/entities"
 	"github.com/hjhsamuel/agent/internal/notify"
+	"github.com/hjhsamuel/agent/internal/service/agent"
 	"github.com/hjhsamuel/agent/pkg/ringbuffer"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -123,4 +126,56 @@ func (s *Service) drainAndSendSSEvent(
 	}
 
 	return nil
+}
+
+func (s *Service) Chat(user *entities.UserInfo, conversationId bson.ObjectID, content string) error {
+	provider, err := s.providers.Get(schema.ChatModel)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	runner := agent.NewAgent(
+		ctx,
+		conversationId,
+		&agent.BaseConfig{
+			User:     user,
+			Skills:   nil,
+			Tools:    s.tools.All(),
+			Provider: provider,
+			Compact:  provider,
+			Store:    s.store,
+			Up:       s.events,
+			Exit:     s.done,
+		},
+	)
+	if err := runner.Start(content); err != nil {
+		cancel()
+		return err
+	}
+
+	s.agents.Set(cancel, conversationId.Hex(), runner)
+	return nil
+}
+
+func (s *Service) agentEvent() {
+	defer s.wg.Done()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case id := <-s.done:
+			s.agents.Delete(id.Hex())
+			_ = s.store.UpdateConversation(
+				bson.M{"_id": id},
+				bson.M{"$set": bson.M{"status": schema.ConversationDone}},
+			)
+		case event := <-s.events:
+			if event.Heartbeat {
+				s.notify.Touch(event.ID)
+			} else {
+				s.notify.PushEvent(event.ID, event.Event)
+			}
+		}
+	}
 }

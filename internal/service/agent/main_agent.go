@@ -22,7 +22,7 @@ func (a *Agent) Start(content string) error {
 	if content != "" {
 		// 新对话
 		// 修改会话状态
-		err := a.store.UpdateConversation(
+		err := a.base.Store.UpdateConversation(
 			bson.M{"_id": a.id},
 			bson.M{"$set": bson.M{"status": schema.ConversationActive}},
 		)
@@ -30,7 +30,7 @@ func (a *Agent) Start(content string) error {
 			return fmt.Errorf("start conversation error: %v", err)
 		}
 		// 添加当前消息
-		err = a.store.AddConversationMessage(&schema.Message{
+		err = a.base.Store.AddConversationMessage(&schema.Message{
 			Conversation: a.id,
 			Role:         provider.RoleUser,
 			Content:      content,
@@ -72,7 +72,7 @@ func (a *Agent) heartbeat() {
 			}
 			// 允许丢失
 			select {
-			case a.runtime.up <- hb:
+			case a.base.Up <- hb:
 			default:
 
 			}

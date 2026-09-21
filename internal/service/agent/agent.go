@@ -4,12 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/hjhsamuel/agent/internal/db"
 	"github.com/hjhsamuel/agent/internal/db/schema"
-	"github.com/hjhsamuel/agent/internal/entities"
-	"github.com/hjhsamuel/agent/internal/llm"
+	"github.com/hjhsamuel/agent/internal/service/agent/taskheap"
 	"github.com/hjhsamuel/agent/pkg/provider"
-	"github.com/hjhsamuel/agent/pkg/skill"
 	"github.com/hjhsamuel/agent/pkg/tool"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -18,6 +15,7 @@ import (
 
 type AgentItf interface {
 	ID() bson.ObjectID
+	Wait()
 
 	MainAgent
 	SubAgent
@@ -48,16 +46,12 @@ type SubAgent interface {
 type Agent struct {
 	id     bson.ObjectID
 	parent bson.ObjectID
-	user   *entities.UserInfo
 	ctx    context.Context
 
-	prompt string
-	skills []*skill.Skill
+	prompt  string
+	toolMap map[string]tool.Tool
 
-	tools    map[string]tool.Tool
-	provider *llm.LLM
-	store    *db.Dao
-
+	base    *BaseConfig
 	runtime *Runtime
 }
 
@@ -65,9 +59,13 @@ func (a *Agent) ID() bson.ObjectID {
 	return a.id
 }
 
+func (a *Agent) Wait() {
+	a.runtime.wg.Wait()
+}
+
 func (a *Agent) getHistoryMessages() error {
 	// 获取记忆点
-	compact, err := a.store.GetConversationCompaction(
+	compact, err := a.base.Store.GetConversationCompaction(
 		bson.M{"conversation": a.id},
 		options.FindOne().SetSort(bson.M{"_id": -1}),
 	)
@@ -86,7 +84,7 @@ func (a *Agent) getHistoryMessages() error {
 		})
 		filter["_id"] = bson.M{"$gt": compact.Message}
 	}
-	messages, err := a.store.GetConversationMessages(
+	messages, err := a.base.Store.GetConversationMessages(
 		filter,
 		options.Find().SetSort(bson.M{"_id": 1}),
 	)
@@ -96,6 +94,7 @@ func (a *Agent) getHistoryMessages() error {
 
 	for _, message := range messages {
 		a.runtime.OldMessages = append(a.runtime.OldMessages, a.store2ProviderMessage(message))
+		a.runtime.oldId = message.ID
 	}
 
 	return nil
@@ -160,7 +159,32 @@ func (a *Agent) provider2StoreMessage(message *provider.Message) *schema.Message
 	return out
 }
 
-func NewAgent() AgentItf {
-	// TODO
-	return &Agent{}
+func NewAgent(
+	ctx context.Context,
+	conversationId bson.ObjectID,
+	baseConfig *BaseConfig,
+) AgentItf {
+	mainCtx, mainCancel := context.WithCancel(context.Background())
+
+	toolMap := make(map[string]tool.Tool)
+	for _, item := range baseConfig.Tools {
+		name := item.Define().GetFunction().Name
+		toolMap[name] = item
+	}
+
+	return &Agent{
+		ctx:     ctx,
+		id:      conversationId,
+		base:    baseConfig,
+		toolMap: toolMap,
+		runtime: &Runtime{
+			OldMessages: make([]*provider.Message, 0),
+			NewMessages: make([]*provider.Message, 0),
+			tasks:       taskheap.NewManager(),
+			main: &MainRuntime{
+				ctx:    mainCtx,
+				cancel: mainCancel,
+			},
+		},
+	}
 }

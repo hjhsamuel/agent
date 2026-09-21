@@ -20,8 +20,8 @@ import (
 func (a *Agent) loopDefer() {
 	if a.runtime.main != nil {
 		a.runtime.main.cancel()
-		a.runtime.main.done <- a.id.Hex()
 	}
+	a.base.Exit <- a.id
 }
 
 func (a *Agent) loop() {
@@ -33,43 +33,50 @@ func (a *Agent) loop() {
 		return
 	}
 
+	tools := make([]openai.ChatCompletionToolUnionParam, 0, len(a.base.Tools))
+	for _, item := range a.base.Tools {
+		tools = append(tools, item.Define())
+	}
+
 	var (
-		contextLimit = int64(float64(a.provider.Capabilities.ContextLimit) * 0.6)
+		contextLimit = int64(float64(a.base.Provider.Capabilities.ContextLimit) * 0.6)
 		contextSize  int64
 	)
 
 	for {
 		if contextSize >= contextLimit {
-			// 触发压缩
+			if err := a.compact(); err != nil {
+				return
+			}
 		}
 
 		a.runtime.OldMessages = append(a.runtime.OldMessages, a.runtime.NewMessages...)
+		if !a.runtime.latestId.IsZero() {
+			a.runtime.oldId = a.runtime.latestId
+		}
 
-		response, err := a.provider.Stream(
+		response, err := a.base.Provider.Stream(
 			a.ctx,
 			a.prompt,
 			a.runtime.OldMessages,
 			&provider.ChatConfig{
-				Temperature:    0,
-				Tool:           nil,
-				ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{},
-				Extra:          nil,
+				Tool: tools,
 			},
 			func(chunk *provider.StreamChunk, err error) error {
 				if err != nil {
-					a.runtime.up <- &notify.UpperEvent{
+					a.base.Up <- &notify.UpperEvent{
 						ID:    a.id.Hex(),
 						Event: &notify.ResetEvent{Error: err.Error()},
 					}
 				} else {
 					switch chunk.Type {
 					case provider.Reasoning:
-						a.runtime.up <- &notify.UpperEvent{
+						a.base.Up <- &notify.UpperEvent{
 							ID:    a.id.Hex(),
 							Event: &notify.ReasoningEvent{Content: chunk.Content},
 						}
 					case provider.Completion:
-						a.runtime.up <- &notify.UpperEvent{
+						a.base.Up <- &notify.UpperEvent{
 							ID:    a.id.Hex(),
 							Event: &notify.CompletionEvent{Content: chunk.Content},
 						}
@@ -95,7 +102,7 @@ func (a *Agent) loop() {
 					Arguments:  toolCall.Arguments,
 				})
 			}
-			id, err := a.store.AddMessageWithToolCalls(a.provider2StoreMessage(response), toolCalls...)
+			id, err := a.base.Store.AddMessageWithToolCalls(a.provider2StoreMessage(response), toolCalls...)
 			if err != nil {
 				return
 			}
@@ -108,7 +115,10 @@ func (a *Agent) loop() {
 			}
 		} else {
 			// 没有工具调用，结束对话
-			_ = a.store.ConversationFinished(a.id, a.provider2StoreMessage(response))
+			// 会话的状态在service中统一处理
+			message := a.provider2StoreMessage(response)
+			message.Conversation = a.id
+			_ = a.base.Store.AddConversationMessage(message)
 			return
 		}
 
@@ -123,7 +133,7 @@ func (a *Agent) loop() {
 }
 
 func (a *Agent) recoverConversation() error {
-	conversation, err := a.store.GetConversation(bson.M{
+	conversation, err := a.base.Store.GetConversation(bson.M{
 		"_id":    a.id,
 		"status": schema.ConversationActive,
 	})
@@ -139,7 +149,7 @@ func (a *Agent) recoverConversation() error {
 		// 先检查异步任务
 		// 异步任务不存在，则重新调用
 		// 异步任务存在，则置入堆中，等待后续检查
-		remoteTask, err := a.store.GetRemoteTaskStore(bson.M{
+		remoteTask, err := a.base.Store.GetRemoteTaskStore(bson.M{
 			"conversation":      a.id,
 			"tool.tool_call_id": toolCall.ToolCallId,
 		})
@@ -177,7 +187,7 @@ func (a *Agent) toolExecute(
 	name string,
 	arguments string,
 ) error {
-	t, ok := a.tools[name]
+	t, ok := a.toolMap[name]
 	if !ok {
 		err := a.toolFinished("", toolCallId, "tool not exists")
 		if err != nil {
@@ -194,7 +204,7 @@ func (a *Agent) toolExecute(
 	// 在此处进行重试
 	retry := backoff.NewBackoff(time.Second*3, time.Minute, 0.2)
 	for attempt := 0; attempt < 8; attempt++ {
-		result, err = t.Execute(a.ctx, a.user.Token, arguments)
+		result, err = t.Execute(a.ctx, a.base.User.Token, arguments)
 		if err != nil {
 			wErr := backoff.Wait(a.ctx, retry.Delay(attempt))
 			if wErr != nil {
@@ -217,7 +227,7 @@ func (a *Agent) toolExecute(
 	if result.TaskId != "" {
 		// 异步任务
 		// 添加记录
-		err = a.store.CreateRemoteTaskStore(&schema.RemoteTaskStore{
+		err = a.base.Store.CreateRemoteTaskStore(&schema.RemoteTaskStore{
 			ContextId: result.ContextId,
 			TaskId:    result.TaskId,
 			Status:    schema.RemoteTaskSubmitted,
@@ -249,7 +259,7 @@ func (a *Agent) toolExecute(
 }
 
 func (a *Agent) toolFinished(taskId, toolCallId, content string) error {
-	err := a.store.ActiveTaskFinished(a.id, &schema.FinishActiveReq{
+	latestId, err := a.base.Store.ActiveTaskFinished(a.id, &schema.FinishActiveReq{
 		TaskId:     taskId,
 		ToolCallId: toolCallId,
 		Content:    content,
@@ -257,6 +267,7 @@ func (a *Agent) toolFinished(taskId, toolCallId, content string) error {
 	if err != nil {
 		return err
 	}
+	a.runtime.latestId = latestId
 	a.runtime.NewMessages = append(a.runtime.NewMessages, &provider.Message{
 		Role:       provider.RoleTool,
 		Content:    content,
@@ -275,7 +286,7 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 	for _, task := range tasks {
 		taskIds = append(taskIds, task.TaskId)
 	}
-	objs, err := a.store.ListRemoteTaskStores(bson.M{
+	objs, err := a.base.Store.ListRemoteTaskStores(bson.M{
 		"conversation": a.id,
 		"task_id":      bson.M{"$in": taskIds},
 	})
@@ -288,8 +299,8 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 	for _, obj := range objs {
 		switch obj.Status {
 		case schema.RemoteTaskSubmitted:
-			t := a.tools[obj.Tool.Name]
-			result, err := t.Check(context.Background(), a.user.Token, obj.ContextId, obj.TaskId)
+			t := a.toolMap[obj.Tool.Name]
+			result, err := t.Check(context.Background(), a.base.User.Token, obj.ContextId, obj.TaskId)
 			if err != nil {
 				// 请求错误，重新入队
 				a.taskRequeue(&taskheap.TaskItem{
@@ -355,8 +366,8 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 }
 
 func (a *Agent) toolResume(contextId, taskId, toolName, toolCallId, content string) error {
-	t := a.tools[toolName]
-	_, err := t.Resume(context.Background(), a.user.Token, contextId, taskId, content)
+	t := a.toolMap[toolName]
+	_, err := t.Resume(context.Background(), a.base.User.Token, contextId, taskId, content)
 	if err != nil {
 		a.taskRequeue(&taskheap.TaskItem{
 			ContextId:  contextId,
@@ -367,7 +378,7 @@ func (a *Agent) toolResume(contextId, taskId, toolName, toolCallId, content stri
 		return nil
 	}
 
-	err = a.store.UpdateRemoteTaskStore(
+	err = a.base.Store.UpdateRemoteTaskStore(
 		bson.M{"conversation": a.id, "context_id": contextId, "task_id": taskId},
 		bson.M{"$set": bson.M{"status": schema.RemoteTaskSubmitted}},
 	)

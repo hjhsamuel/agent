@@ -1,6 +1,7 @@
 package shard
 
 import (
+	"context"
 	"errors"
 
 	"github.com/hjhsamuel/agent/internal/service/agent"
@@ -14,7 +15,7 @@ type Manager struct {
 	shards []*shard
 }
 
-func (m *Manager) Get(id string) (*agent.Agent, error) {
+func (m *Manager) Get(id string) (agent.MainAgent, error) {
 	slot := m.hash(id)
 	out, ok := slot.Get(id)
 	if !ok {
@@ -28,9 +29,9 @@ func (m *Manager) hash(id string) *shard {
 	return m.shards[index]
 }
 
-func (m *Manager) Set(id string, agt *agent.Agent) {
+func (m *Manager) Set(cancel context.CancelFunc, id string, agt agent.MainAgent) {
 	slot := m.hash(id)
-	slot.Set(id, agt)
+	slot.Set(cancel, id, agt)
 }
 
 func (m *Manager) Delete(id string) {

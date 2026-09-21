@@ -132,7 +132,7 @@ func (d *Dao) AddConversationCompaction(obj *schema.Compaction) error {
 func (d *Dao) ActiveTaskFinished(
 	conversationId bson.ObjectID,
 	tasks ...*schema.FinishActiveReq,
-) error {
+) (bson.ObjectID, error) {
 	var (
 		newMessages   = make([]*schema.Message, 0, len(tasks))
 		pullIds       = make([]string, 0, len(tasks))
@@ -176,16 +176,19 @@ func (d *Dao) ActiveTaskFinished(
 
 	session, err := d.StartSession()
 	if err != nil {
-		return err
+		return bson.ObjectID{}, err
 	}
 	defer session.EndSession(ctx)
 
+	var id bson.ObjectID
 	_, err = session.WithTransaction(context.Background(), func(sc context.Context) (any, error) {
 		// 添加消息
-		_, err = messageColl.InsertMany(sc, newMessages)
+		result, err := messageColl.InsertMany(sc, newMessages)
 		if err != nil {
 			return nil, err
 		}
+		id = result.InsertedIDs[len(result.InsertedIDs)-1].(bson.ObjectID)
+
 		// 移除任务记录
 		_, err = conversationColl.UpdateOne(
 			sc,
@@ -207,9 +210,9 @@ func (d *Dao) ActiveTaskFinished(
 		return nil, nil
 	})
 	if err != nil {
-		return err
+		return bson.ObjectID{}, err
 	}
-	return nil
+	return id, nil
 }
 
 func (d *Dao) AddMessageWithToolCalls(
@@ -260,43 +263,4 @@ func (d *Dao) AddMessageWithToolCalls(
 	}
 
 	return id, nil
-}
-
-func (d *Dao) ConversationFinished(conversationId bson.ObjectID, message *schema.Message) error {
-	var (
-		conversationColl = d.getCollection(schema.ConversationCollection)
-		messageColl      = d.getCollection(schema.MessageCollection)
-	)
-
-	ctx := context.Background()
-
-	session, err := d.StartSession()
-	if err != nil {
-		return err
-	}
-	defer session.EndSession(ctx)
-
-	_, err = session.WithTransaction(context.Background(), func(sc context.Context) (any, error) {
-		message.Conversation = conversationId
-		_, err = messageColl.InsertOne(sc, message)
-		if err != nil {
-			return nil, err
-		}
-
-		_, err = conversationColl.UpdateOne(
-			sc,
-			bson.M{"_id": conversationId},
-			bson.M{"$set": bson.M{"status": schema.ConversationDone}},
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		return nil, nil
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

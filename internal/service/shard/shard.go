@@ -1,6 +1,7 @@
 package shard
 
 import (
+	"context"
 	"sync"
 
 	"github.com/hjhsamuel/agent/internal/service/agent"
@@ -8,10 +9,11 @@ import (
 
 type shard struct {
 	lock   sync.RWMutex
-	agents map[string]*agent.Agent
+	agents map[string]agent.MainAgent
+	cancel map[string]context.CancelFunc
 }
 
-func (s *shard) Get(id string) (*agent.Agent, bool) {
+func (s *shard) Get(id string) (agent.MainAgent, bool) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
@@ -19,11 +21,12 @@ func (s *shard) Get(id string) (*agent.Agent, bool) {
 	return out, ok
 }
 
-func (s *shard) Set(id string, agent *agent.Agent) {
+func (s *shard) Set(cancel context.CancelFunc, id string, agent agent.MainAgent) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	s.agents[id] = agent
+	s.cancel[id] = cancel
 }
 
 func (s *shard) Del(id string) {
@@ -31,10 +34,13 @@ func (s *shard) Del(id string) {
 	defer s.lock.Unlock()
 
 	delete(s.agents, id)
+	if v, ok := s.cancel[id]; ok {
+		v()
+	}
 }
 
 func newShard() *shard {
 	return &shard{
-		agents: make(map[string]*agent.Agent),
+		agents: make(map[string]agent.MainAgent),
 	}
 }

@@ -29,7 +29,7 @@ func (a *Agent) resolveInputRequired(items ...*resolver.InputRequiredItem) error
 		itemMap[item.ToolCallId] = item
 	}
 
-	response, err := a.provider.Chat(
+	response, err := a.base.Provider.Chat(
 		context.Background(),
 		prompts.InputRequiredResolverSystemPrompt,
 		append(a.runtime.OldMessages, messages...),
@@ -79,12 +79,12 @@ func (a *Agent) resolveInputRequired(items ...*resolver.InputRequiredItem) error
 		switch decision.Action {
 		case resolver.ProvideInput:
 			content, _ := json.Marshal(decision.Input)
-			_ = a.store.UpdateRemoteTaskStore(
+			_ = a.base.Store.UpdateRemoteTaskStore(
 				bson.M{"conversation": a.id, "context_id": item.ContextId, "task_id": item.TaskId},
 				bson.M{"$set": bson.M{"status": schema.RemoteTaskInputted, "content": content}},
 			)
 		case resolver.AskUser:
-			_ = a.store.UpdateRemoteTaskStore(
+			_ = a.base.Store.UpdateRemoteTaskStore(
 				bson.M{"conversation": a.id, "context_id": item.ContextId, "task_id": item.TaskId},
 				bson.M{"$set": bson.M{"status": schema.RemoteTaskWaitingInput, "content": decision.Question}},
 			)
@@ -103,7 +103,7 @@ func (a *Agent) resolveInputRequired(items ...*resolver.InputRequiredItem) error
 	}
 
 	if len(events) != 0 {
-		a.runtime.up <- &notify.UpperEvent{
+		a.base.Up <- &notify.UpperEvent{
 			ID:    a.id.Hex(),
 			IsSub: false,
 			Event: &notify.InputRequiredEvent{

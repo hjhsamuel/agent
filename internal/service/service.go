@@ -1,6 +1,9 @@
 package service
 
 import (
+	"context"
+	"sync"
+
 	"github.com/hjhsamuel/agent/config"
 	"github.com/hjhsamuel/agent/internal/db"
 	"github.com/hjhsamuel/agent/internal/db/schema"
@@ -16,6 +19,10 @@ import (
 )
 
 type Service struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+
 	tools     *tool.Manager
 	providers *llm.Manager
 	notify    *notify.Manager
@@ -24,10 +31,32 @@ type Service struct {
 	skills []*skill.Skill
 
 	agents *shard.Manager // 会话agent
+	done   chan bson.ObjectID
+	events chan *notify.UpperEvent
+}
+
+func (s *Service) Start() error {
+	s.notify.Start()
+
+	s.wg.Add(1)
+	go s.agentEvent()
+
+	return nil
+}
+
+func (s *Service) Close() {
+	s.cancel()
+
+	s.notify.Close()
+
+	s.wg.Wait()
 }
 
 func NewService(c *config.Config) (*Service, error) {
-	s := &Service{}
+	s := &Service{
+		done:   make(chan bson.ObjectID, 128),
+		events: make(chan *notify.UpperEvent, 1024),
+	}
 
 	if err := initStorage(c, s); err != nil {
 		return nil, err
@@ -36,6 +65,12 @@ func NewService(c *config.Config) (*Service, error) {
 		return nil, err
 	}
 	if err := initTools(c, s); err != nil {
+		return nil, err
+	}
+	if err := initAgents(c, s); err != nil {
+		return nil, err
+	}
+	if err := initNotify(c, s); err != nil {
 		return nil, err
 	}
 
@@ -126,5 +161,15 @@ func initProvider(c *config.Config, s *Service) error {
 
 	s.providers = m
 
+	return nil
+}
+
+func initAgents(c *config.Config, s *Service) error {
+	s.agents = shard.NewManager(shard.ShardCount)
+	return nil
+}
+
+func initNotify(c *config.Config, s *Service) error {
+	s.notify = notify.NewManager(notify.ShardCount)
 	return nil
 }
