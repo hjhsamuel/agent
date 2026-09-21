@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/hjhsamuel/agent/app/api/v1/request"
+	"github.com/hjhsamuel/agent/app/api/request"
 	"github.com/hjhsamuel/agent/app/api/v1/schema"
 	"github.com/hjhsamuel/agent/internal/entities"
 )

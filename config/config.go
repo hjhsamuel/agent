@@ -49,28 +49,28 @@ type StorageConfig struct {
 
 var gConf *Config
 
-func Init() error {
+func Init() (*Config, error) {
 	_ = godotenv.Load(globalEnvFile)
 
 	gConf = &Config{}
 	if err := setServerConfig(gConf); err != nil {
-		return err
+		return nil, err
 	}
 	if err := setLogConfig(gConf); err != nil {
-		return err
+		return nil, err
 	}
 	if err := setSecretConfig(gConf); err != nil {
-		return err
+		return nil, err
 	}
 	if err := setStorageConfig(gConf); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := initLog(); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return gConf, nil
 }
 
 func setServerConfig(c *Config) error {
