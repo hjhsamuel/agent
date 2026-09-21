@@ -23,7 +23,15 @@ func (a *Agent) Start(content string) error {
 		// 新对话
 		// 修改会话状态
 		err := a.base.Store.UpdateConversation(
-			bson.M{"_id": a.id},
+			bson.M{
+				"_id": a.id,
+				"status": bson.M{
+					"$in": []schema.ConversationState{
+						schema.ConversationTemp,
+						schema.ConversationDone,
+					},
+				},
+			},
 			bson.M{"$set": bson.M{"status": schema.ConversationActive}},
 		)
 		if err != nil {

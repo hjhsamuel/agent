@@ -128,7 +128,12 @@ func (s *Service) drainAndSendSSEvent(
 	return nil
 }
 
-func (s *Service) Chat(user *entities.UserInfo, conversationId bson.ObjectID, content string) error {
+func (s *Service) Chat(user *entities.UserInfo, id string, content string) error {
+	conversationId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+
 	provider, err := s.providers.Get(schema.ChatModel)
 	if err != nil {
 		return err
