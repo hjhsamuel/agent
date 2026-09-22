@@ -3,11 +3,11 @@ package agent
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/hjhsamuel/agent/internal/db/schema"
 	"github.com/hjhsamuel/agent/internal/notify"
-	"github.com/hjhsamuel/agent/pkg/provider"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -22,27 +22,7 @@ func (a *Agent) Start(content string) error {
 	if content != "" {
 		// 新对话
 		// 修改会话状态
-		err := a.base.Store.UpdateConversation(
-			bson.M{
-				"_id": a.id,
-				"status": bson.M{
-					"$in": []schema.ConversationState{
-						schema.ConversationTemp,
-						schema.ConversationDone,
-					},
-				},
-			},
-			bson.M{"$set": bson.M{"status": schema.ConversationActive}},
-		)
-		if err != nil {
-			return fmt.Errorf("start conversation error: %v", err)
-		}
-		// 添加当前消息
-		err = a.base.Store.AddConversationMessage(&schema.Message{
-			Conversation: a.id,
-			Role:         provider.RoleUser,
-			Content:      content,
-		})
+		err := a.base.Store.BeginConversation(a.id, strconv.Itoa(a.base.User.ID), content)
 		if err != nil {
 			return fmt.Errorf("start conversation error: %v", err)
 		}
@@ -50,6 +30,7 @@ func (a *Agent) Start(content string) error {
 
 	// 加载完整对话
 	if err := a.getHistoryMessages(); err != nil {
+		_ = a.base.Store.UpdateConversation(bson.M{"_id": a.id}, bson.M{"$set": bson.M{"status": schema.ConversationFailed}})
 		return err
 	}
 

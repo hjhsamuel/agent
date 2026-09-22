@@ -40,6 +40,9 @@ func (a *Api) SSEStream(c *gin.Context) {
 
 	err = a.srv.ListenSSE(c, strconv.Itoa(user.ID), req.ID, req.Seq)
 	if err != nil {
+		if c.Writer.Written() {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, &request.Response{
 			Code:    http.StatusInternalServerError,
 			Message: err.Error(),
@@ -49,6 +52,8 @@ func (a *Api) SSEStream(c *gin.Context) {
 }
 
 func (a *Api) Chat(ctx *request.Context, req *schema.ChatReq) (string, error) {
+	// The route identifies the conversation; a JSON body cannot override it.
+	req.ID = ctx.Param("id")
 	if req.ID == "" || req.Content == "" {
 		return "", errors.New("invalid request: id and content are required")
 	}
@@ -61,4 +66,15 @@ func (a *Api) Chat(ctx *request.Context, req *schema.ChatReq) (string, error) {
 		return "", fmt.Errorf("start conversation error: %v", err)
 	}
 	return "", nil
+}
+
+func (a *Api) TaskInput(ctx *request.Context, req *schema.TaskInputReq) (string, error) {
+	if req.ContextID == "" || req.TaskID == "" || req.Content == "" {
+		return "", errors.New("context_id, task_id and content are required")
+	}
+	return "", a.srv.ProvideInput(&entities.UserInfo{ID: ctx.Auth.ID, Token: ctx.Auth.Token}, ctx.Param("id"), req.ContextID, req.TaskID, req.Content)
+}
+
+func (a *Api) Cancel(ctx *request.Context, req *struct{}) (string, error) {
+	return "", a.srv.Cancel(&entities.UserInfo{ID: ctx.Auth.ID, Token: ctx.Auth.Token}, ctx.Param("id"))
 }

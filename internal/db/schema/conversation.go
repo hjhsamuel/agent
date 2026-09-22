@@ -32,6 +32,7 @@ const (
 	ConversationTemp   ConversationState = "temp"   // 临时
 	ConversationActive ConversationState = "active" // 运行中
 	ConversationDone   ConversationState = "done"   // 对话结束
+	ConversationFailed ConversationState = "failed"
 )
 
 const MessageCollection = "agent_message"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -71,18 +72,34 @@ func (l *LoadSkill) Execute(ctx context.Context, token, content string) (*tool.T
 	var path string
 	if params["path"] == "" {
 		// load SKILL.md
-		path = filepath.Join(l.root, params["name"], l.skillFile)
+		path = filepath.Join(params["name"], l.skillFile)
 	} else {
 		// load reference
-		path = filepath.Join(l.root, params["name"], params["path"])
+		path = filepath.Join(params["name"], params["path"])
 	}
 
-	body, err := os.ReadFile(path)
+	if !filepath.IsLocal(path) {
+		return nil, fmt.Errorf("skill path escapes the skill directory")
+	}
+	root, err := os.OpenRoot(l.root)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	file, err := root.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	body, err := io.ReadAll(io.LimitReader(file, 128*1024+1))
 	if err != nil {
 		return &tool.ToolResult{
 			Status:  tool.TaskFailed,
 			Content: fmt.Sprintf("loading skill error: %v", err),
 		}, nil
+	}
+	if len(body) > 128*1024 {
+		return nil, fmt.Errorf("skill resource exceeds 128 KiB")
 	}
 	return &tool.ToolResult{
 		Status:  tool.TaskCompleted,

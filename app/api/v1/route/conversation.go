@@ -11,4 +11,6 @@ func conversationRoutes(api *handler.Api, g *gin.RouterGroup) {
 
 	group.GET("/stream", api.SSEStream)
 	group.POST("/:id/chat", request.GetHandle(api.Chat, true))
+	group.POST("/:id/input", request.GetHandle(api.TaskInput, true))
+	group.POST("/:id/cancel", request.GetHandle(api.Cancel, true))
 }

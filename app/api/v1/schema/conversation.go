@@ -6,6 +6,12 @@ type SSEStreamReq struct {
 }
 
 type ChatReq struct {
-	ID      string `json:"id"`
+	ID      string `json:"id" uri:"id"`
 	Content string `json:"content"`
+}
+
+type TaskInputReq struct {
+	ContextID string `json:"context_id"`
+	TaskID    string `json:"task_id"`
+	Content   string `json:"content"`
 }

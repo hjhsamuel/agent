@@ -14,8 +14,23 @@ import (
 )
 
 type Dao struct {
-	db string
+	db  string
+	ctx context.Context
 	*mongo.Client
+}
+
+// WithContext shares the connection pool while binding operations to a caller.
+func (d *Dao) WithContext(ctx context.Context) *Dao {
+	c := *d
+	c.ctx = ctx
+	return &c
+}
+
+func (d *Dao) context() context.Context {
+	if d.ctx != nil {
+		return d.ctx
+	}
+	return context.Background()
 }
 
 func (d *Dao) getCollection(name string) *mongo.Collection {
@@ -61,6 +76,7 @@ func newMongoClient(info *MongoConfig, dsn string, logger *logrus.Logger) (*mong
 	}
 
 	opts := options.Client().ApplyURI(dsn)
+	opts.SetTimeout(30 * time.Second)
 	if info.MaxIdleConn != 0 {
 		opts.SetMaxPoolSize(uint64(info.MaxIdleConn))
 	}
@@ -96,6 +112,7 @@ func newMongoClient(info *MongoConfig, dsn string, logger *logrus.Logger) (*mong
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 	if err = client.Ping(ctx, nil); err != nil {
+		_ = client.Disconnect(context.Background())
 		return nil, err
 	}
 

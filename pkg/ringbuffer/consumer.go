@@ -8,7 +8,7 @@ import (
 type Consumer[T any] struct {
 	ring    *RingBuffer[T]
 	nextSeq uint64
-	gen     uint64
+	sub     *subscription
 }
 
 func (c *Consumer[T]) Cursor() uint64 {
@@ -19,7 +19,7 @@ func (c *Consumer[T]) Cursor() uint64 {
 }
 
 func (c *Consumer[T]) checkGen() error {
-	if c.ring.readGen.Load() != c.gen {
+	if c.ring.subscriber.Load() != c.sub {
 		return ErrConsumerReplaced
 	}
 	return nil
@@ -86,7 +86,9 @@ func (c *Consumer[T]) Next(ctx context.Context) (*Record[T], error) {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-c.ring.notify:
+		case <-c.sub.done:
+			return nil, ErrConsumerReplaced
+		case <-c.sub.notify:
 
 		}
 	}
@@ -144,5 +146,7 @@ func (c *Consumer[T]) Drain() ([]*Record[T], error) {
 }
 
 func (c *Consumer[T]) Notify() <-chan struct{} {
-	return c.ring.notify
+	return c.sub.notify
 }
+
+func (c *Consumer[T]) Done() <-chan struct{} { return c.sub.done }

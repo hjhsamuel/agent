@@ -29,14 +29,31 @@ func (m *Manager) hash(id string) *shard {
 	return m.shards[index]
 }
 
-func (m *Manager) Set(cancel context.CancelFunc, id string, agt agent.MainAgent) {
+func (m *Manager) Set(cancel context.CancelFunc, id string, agt agent.MainAgent) bool {
 	slot := m.hash(id)
-	slot.Set(cancel, id, agt)
+	return slot.Set(cancel, id, agt)
 }
 
 func (m *Manager) Delete(id string) {
 	slot := m.hash(id)
 	slot.Del(id)
+}
+
+// Cancel keeps the entry until its completion is consumed, preventing overlap.
+func (m *Manager) Cancel(id string) bool {
+	slot := m.hash(id)
+	return slot.Cancel(id)
+}
+
+// Close cancels every runner before waiting, without holding shard locks.
+func (m *Manager) Close() {
+	var runners []agent.MainAgent
+	for _, slot := range m.shards {
+		runners = append(runners, slot.Close()...)
+	}
+	for _, runner := range runners {
+		runner.Wait()
+	}
 }
 
 func NewManager(cnt int) *Manager {

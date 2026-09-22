@@ -7,12 +7,13 @@ import (
 	"github.com/hjhsamuel/agent/pkg/provider"
 	"github.com/hjhsamuel/agent/pkg/tool"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 func (d *Dao) CreateRemoteTaskStore(obj *schema.RemoteTaskStore) error {
 	collection := d.getCollection(schema.RemoteTaskStoreCollection)
-	_, err := collection.InsertOne(context.Background(), obj)
+	_, err := collection.InsertOne(d.context(), obj)
 	if err != nil {
 		return err
 	}
@@ -21,7 +22,7 @@ func (d *Dao) CreateRemoteTaskStore(obj *schema.RemoteTaskStore) error {
 
 func (d *Dao) GetRemoteTaskStore(filter bson.M) (*schema.RemoteTaskStore, error) {
 	collection := d.getCollection(schema.RemoteTaskStoreCollection)
-	result := collection.FindOne(context.Background(), filter)
+	result := collection.FindOne(d.context(), filter)
 
 	if err := result.Err(); err != nil {
 		return nil, err
@@ -37,13 +38,13 @@ func (d *Dao) GetRemoteTaskStore(filter bson.M) (*schema.RemoteTaskStore, error)
 
 func (d *Dao) ListRemoteTaskStores(filter bson.M) ([]*schema.RemoteTaskStore, error) {
 	collection := d.getCollection(schema.RemoteTaskStoreCollection)
-	cursor, err := collection.Find(context.Background(), filter)
+	cursor, err := collection.Find(d.context(), filter)
 	if err != nil {
 		return nil, err
 	}
 
 	var objs []*schema.RemoteTaskStore
-	if err = cursor.All(context.Background(), &objs); err != nil {
+	if err = cursor.All(d.context(), &objs); err != nil {
 		return nil, err
 	}
 
@@ -52,9 +53,12 @@ func (d *Dao) ListRemoteTaskStores(filter bson.M) ([]*schema.RemoteTaskStore, er
 
 func (d *Dao) UpdateRemoteTaskStore(filter bson.M, update bson.M) error {
 	collection := d.getCollection(schema.RemoteTaskStoreCollection)
-	_, err := collection.UpdateOne(context.Background(), filter, update)
+	result, err := collection.UpdateOne(d.context(), filter, update)
 	if err != nil {
 		return err
+	}
+	if result.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
 	}
 	return nil
 }
@@ -68,7 +72,7 @@ func (d *Dao) CreateTaskStoreServer(content string) (bson.ObjectID, error) {
 		id bson.ObjectID
 	)
 
-	ctx := context.Background()
+	ctx := d.context()
 
 	session, err := d.StartSession()
 	if err != nil {
@@ -124,7 +128,7 @@ func (d *Dao) CreateTaskStoreServer(content string) (bson.ObjectID, error) {
 
 func (d *Dao) GetTaskStoreServer(filter bson.M) (*schema.TaskStoreServer, error) {
 	collection := d.getCollection(schema.TaskStoreServerCollection)
-	result := collection.FindOne(context.Background(), filter)
+	result := collection.FindOne(d.context(), filter)
 	if err := result.Err(); err != nil {
 		return nil, err
 	}
@@ -139,7 +143,7 @@ func (d *Dao) GetTaskStoreServer(filter bson.M) (*schema.TaskStoreServer, error)
 
 func (d *Dao) UpdateTaskStoreServer(filter bson.M, update bson.M) (int64, error) {
 	collection := d.getCollection(schema.TaskStoreServerCollection)
-	result, err := collection.UpdateOne(context.Background(), filter, update)
+	result, err := collection.UpdateOne(d.context(), filter, update)
 	if err != nil {
 		return 0, err
 	}

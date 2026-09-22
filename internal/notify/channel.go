@@ -6,6 +6,8 @@ package notify
 //  1. main agent 上报的 SSE 消息；
 //  2. subagent 上报的 INPUT_REQUIRED
 type UpperEvent struct {
+	Finished  bool
+	Error     error
 	ID        string // 会话id
 	IsSub     bool   // 是否为 subagent
 	Event     SSEvent

@@ -51,6 +51,9 @@ func (m *Manager) Get(t schema.ModelType) (*LLM, error) {
 		if err != nil {
 			continue
 		}
+		if out != "" {
+			break
+		}
 	}
 
 	if out == "" {

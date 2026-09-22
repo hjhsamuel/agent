@@ -20,15 +20,15 @@ func (a *Agent) Execute(content string) error {
 		// 从历史任务恢复
 	}
 
-	return nil
+	return errors.New("subagent execution is not implemented")
 }
 
 func (a *Agent) Resume(content string) error {
 	// TODO
-	panic("implement me")
+	return errors.New("subagent resume is not implemented")
 }
 
 func (a *Agent) GetState() (*schema.TaskStoreServer, error) {
 	// TODO
-	panic("implement me")
+	return nil, errors.New("subagent state is not implemented")
 }

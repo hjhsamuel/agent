@@ -5,7 +5,6 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
-	"github.com/openai/openai-go/v3/shared/constant"
 )
 
 type OpenAI struct {
@@ -37,24 +36,17 @@ func (o *OpenAI) buildParams(
 		case RoleUser:
 			message = openai.UserMessage(item.Content)
 		case RoleAssistant:
-			if len(item.ToolCalls) != 0 {
-				toolCalls := make([]openai.ChatCompletionMessageToolCallUnion, len(item.ToolCalls))
-				for j, toolCall := range item.ToolCalls {
-					toolCalls[j] = openai.ChatCompletionMessageToolCallUnion{
+			message = openai.AssistantMessage(item.Content)
+			for _, toolCall := range item.ToolCalls {
+				message.OfAssistant.ToolCalls = append(message.OfAssistant.ToolCalls, openai.ChatCompletionMessageToolCallUnionParam{
+					OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
 						ID: toolCall.ID,
-						Function: openai.ChatCompletionMessageFunctionToolCallFunction{
+						Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
 							Name:      toolCall.Name,
 							Arguments: toolCall.Arguments,
 						},
-					}
-				}
-				message = openai.ChatCompletionMessage{
-					Role:      constant.Assistant(openai.MessageRoleAssistant),
-					Content:   item.Content,
-					ToolCalls: toolCalls,
-				}.ToParam()
-			} else {
-				message = openai.AssistantMessage(item.Content)
+					},
+				})
 			}
 		case RoleTool:
 			message = openai.ToolMessage(item.Content, item.ToolCallId)
@@ -140,7 +132,9 @@ func (o *OpenAI) Stream(
 	yield YieldFunc,
 ) (*Message, error) {
 	params := o.buildParams(model, prompt, messages, conf)
+	params.StreamOptions = openai.ChatCompletionStreamOptionsParam{IncludeUsage: openai.Bool(true)}
 	stream := o.client.Chat.Completions.NewStreaming(ctx, params)
+	defer stream.Close()
 
 	acc := openai.ChatCompletionAccumulator{}
 	for stream.Next() {
@@ -153,10 +147,14 @@ func (o *OpenAI) Stream(
 
 		delta := chunk.Choices[0].Delta
 		if delta.Content != "" {
-			_ = yield(&StreamChunk{Type: Completion, Content: delta.Content}, nil)
+			if err := yield(&StreamChunk{Type: Completion, Content: delta.Content}, nil); err != nil {
+				return nil, err
+			}
 		}
 		if v, ok := delta.JSON.ExtraFields["reasoning_content"]; ok {
-			_ = yield(&StreamChunk{Type: Reasoning, Content: v.Raw()}, nil)
+			if err := yield(&StreamChunk{Type: Reasoning, Content: v.Raw()}, nil); err != nil {
+				return nil, err
+			}
 		}
 	}
 

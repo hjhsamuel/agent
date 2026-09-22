@@ -3,13 +3,13 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/hjhsamuel/agent/internal/db/schema"
 	"github.com/hjhsamuel/agent/internal/notify"
 	"github.com/hjhsamuel/agent/internal/service/agent/resolver"
 	"github.com/hjhsamuel/agent/internal/service/agent/taskheap"
-	"github.com/hjhsamuel/agent/pkg/backoff"
 	"github.com/hjhsamuel/agent/pkg/provider"
 	"github.com/hjhsamuel/agent/pkg/tool"
 	"github.com/openai/openai-go/v3"
@@ -17,24 +17,72 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-func (a *Agent) loopDefer() {
+func (a *Agent) loopDefer(err error) {
 	if a.runtime.main != nil {
 		a.runtime.main.cancel()
 	}
-	a.base.Exit <- a.id
+	select {
+	case a.base.Up <- &notify.UpperEvent{ID: a.id.Hex(), Finished: true, Error: err}:
+	case <-a.base.Shutdown:
+	}
 }
 
 func (a *Agent) calculateContextSize(message *provider.Message) int64 {
+	if message == nil || message.Usage == nil {
+		return 0
+	}
 	return message.Usage.Prompt + message.Usage.Completions - message.Usage.Reasoning
 }
 
 func (a *Agent) loop() {
 	defer a.runtime.wg.Done()
-	defer a.loopDefer()
+	a.loopDefer(a.runLoop())
+}
+
+func (a *Agent) emit(event notify.SSEvent) error {
+	select {
+	case a.base.Up <- &notify.UpperEvent{ID: a.id.Hex(), Event: event}:
+		return nil
+	case <-a.ctx.Done():
+		return a.ctx.Err()
+	}
+}
+
+func (a *Agent) mergeMessages() {
+	a.runtime.OldMessages = append(a.runtime.OldMessages, a.runtime.NewMessages...)
+	a.runtime.NewMessages = nil
+	if !a.runtime.latestId.IsZero() {
+		a.runtime.oldId = a.runtime.latestId
+	}
+}
+
+// Estimate bytes conservatively when a provider omits token usage. Include tool
+// arguments/results and newly appended user input, not just the last response.
+func (a *Agent) contextSize() int64 {
+	var size int64
+	for _, message := range a.runtime.OldMessages {
+		if n := a.calculateContextSize(message); n > 0 {
+			size = n
+			continue
+		}
+		size += int64(len(message.Content) + 16)
+		for _, call := range message.ToolCalls {
+			size += int64(len(call.Arguments) + len(call.Name) + 16)
+		}
+	}
+	return size
+}
+
+func (a *Agent) runLoop() error {
 
 	// 重建
 	if err := a.recoverConversation(); err != nil {
-		return
+		return err
+	}
+	if a.runtime.tasks.Len() != 0 {
+		if err := a.waitToolResult(); err != nil {
+			return err
+		}
 	}
 
 	tools := make([]openai.ChatCompletionToolUnionParam, 0, len(a.base.Tools))
@@ -42,25 +90,24 @@ func (a *Agent) loop() {
 		tools = append(tools, item.Define())
 	}
 
-	var (
-		contextLimit = int64(float64(a.base.Provider.Capabilities.ContextLimit) * 0.6)
-		contextSize  int64
-	)
-	if len(a.runtime.OldMessages) != 0 {
-		contextSize = a.calculateContextSize(a.runtime.OldMessages[len(a.runtime.OldMessages)-1])
+	contextLimit := int64(0)
+	if a.base.Provider.Capabilities != nil {
+		contextLimit = a.base.Provider.Capabilities.ContextLimit * 3 / 5
+	}
+	maxTurns := a.base.MaxTurns
+	if maxTurns <= 0 {
+		maxTurns = 128
 	}
 
-	for {
-		if contextSize >= contextLimit {
-			if err := a.compact(); err != nil {
-				return
-			}
+	for turn := 0; turn < maxTurns; turn++ {
+		if err := a.ctx.Err(); err != nil {
+			return err
 		}
-
-		a.runtime.OldMessages = append(a.runtime.OldMessages, a.runtime.NewMessages...)
-		a.runtime.NewMessages = make([]*provider.Message, 0)
-		if !a.runtime.latestId.IsZero() {
-			a.runtime.oldId = a.runtime.latestId
+		a.mergeMessages()
+		if contextLimit > 0 && a.contextSize() >= contextLimit {
+			if err := a.compact(); err != nil {
+				return err
+			}
 		}
 
 		response, err := a.base.Provider.Stream(
@@ -72,37 +119,21 @@ func (a *Agent) loop() {
 			},
 			func(chunk *provider.StreamChunk, err error) error {
 				if err != nil {
-					a.base.Up <- &notify.UpperEvent{
-						ID:    a.id.Hex(),
-						Event: &notify.ResetEvent{Error: err.Error()},
-					}
+					return a.emit(&notify.ResetEvent{Error: err.Error()})
 				} else {
 					switch chunk.Type {
 					case provider.Reasoning:
-						a.base.Up <- &notify.UpperEvent{
-							ID:    a.id.Hex(),
-							Event: &notify.ReasoningEvent{Content: chunk.Content},
-						}
+						return a.emit(&notify.ReasoningEvent{Content: chunk.Content})
 					case provider.Completion:
-						a.base.Up <- &notify.UpperEvent{
-							ID:    a.id.Hex(),
-							Event: &notify.CompletionEvent{Content: chunk.Content},
-						}
+						return a.emit(&notify.CompletionEvent{Content: chunk.Content})
 					}
 				}
 				return nil
 			},
 		)
 		if err != nil {
-			return
+			return err
 		}
-
-		a.base.Up <- &notify.UpperEvent{
-			ID:    a.id.Hex(),
-			Event: &notify.DoneEvent{},
-		}
-
-		contextSize = a.calculateContextSize(response)
 		a.runtime.OldMessages = append(a.runtime.OldMessages, response)
 
 		if len(response.ToolCalls) != 0 {
@@ -118,13 +149,13 @@ func (a *Agent) loop() {
 			}
 			id, err := a.base.Store.AddMessageWithToolCalls(a.provider2StoreMessage(response), toolCalls...)
 			if err != nil {
-				return
+				return err
 			}
 
 			for _, toolCall := range toolCalls {
 				err = a.toolExecute(id, toolCall.ToolCallId, toolCall.Name, toolCall.Arguments)
 				if err != nil {
-					return
+					return err
 				}
 			}
 		} else {
@@ -132,18 +163,17 @@ func (a *Agent) loop() {
 			// 会话的状态在service中统一处理
 			message := a.provider2StoreMessage(response)
 			message.Conversation = a.id
-			_ = a.base.Store.AddConversationMessage(message)
-			return
+			return a.base.Store.AddConversationMessage(message)
 		}
 
 		if a.runtime.tasks.Len() != 0 {
 			err = a.waitToolResult()
 			if err != nil {
-				return
+				return err
 			}
 		}
 	}
-
+	return fmt.Errorf("agent exceeded %d model turns", maxTurns)
 }
 
 func (a *Agent) recoverConversation() error {
@@ -210,26 +240,16 @@ func (a *Agent) toolExecute(
 		return nil
 	}
 
-	var (
-		result *tool.ToolResult
-		err    error
-	)
-	// 此处返回 error 表示发送远程请求失败
-	// 在此处进行重试
-	retry := backoff.NewBackoff(time.Second*3, time.Minute, 0.2)
-	for attempt := 0; attempt < 8; attempt++ {
-		result, err = t.Execute(a.ctx, a.base.User.Token, arguments)
-		if err != nil {
-			wErr := backoff.Wait(a.ctx, retry.Delay(attempt))
-			if wErr != nil {
-				return err
-			}
-			continue
-		}
-		break
-	}
+	// A transport error does not prove a side-effecting tool was not executed.
+	// Do not automatically replay Execute without an idempotency contract.
+	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Minute)
+	defer cancel()
+	result, err := t.Execute(ctx, a.base.User.Token, arguments)
 
 	if err != nil {
+		if a.ctx.Err() != nil {
+			return a.ctx.Err()
+		}
 		// 远程工具暂时不可用，标记为结束状态
 		wErr := a.toolFinished("", toolCallId, err.Error())
 		if wErr != nil {
@@ -238,6 +258,15 @@ func (a *Agent) toolExecute(
 		return nil
 	}
 
+	if result == nil {
+		return errors.New("tool returned no result")
+	}
+	if result.Status == tool.TaskCompleted || result.Status == tool.TaskFailed ||
+		result.Status == tool.TaskCanceled || result.Status == tool.TaskRejected ||
+		result.Status == tool.TaskAuthRequired {
+
+		return a.toolFinished("", toolCallId, result.Content)
+	}
 	if result.TaskId != "" {
 		// 异步任务
 		// 添加记录
@@ -311,10 +340,21 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 	var resolveItems []*resolver.InputRequiredItem
 
 	for _, obj := range objs {
+		if obj.Tool == nil {
+			return errors.New("remote task has no tool metadata")
+		}
 		switch obj.Status {
 		case schema.RemoteTaskSubmitted:
 			t := a.toolMap[obj.Tool.Name]
-			result, err := t.Check(context.Background(), a.base.User.Token, obj.ContextId, obj.TaskId)
+			if t == nil {
+				return fmt.Errorf("task tool %q is unavailable", obj.Tool.Name)
+			}
+			checkCtx, cancel := context.WithTimeout(a.ctx, time.Minute)
+			result, err := t.Check(checkCtx, a.base.User.Token, obj.ContextId, obj.TaskId)
+			cancel()
+			if err == nil && result == nil {
+				err = errors.New("tool returned no task state")
+			}
 			if err != nil {
 				// 请求错误，重新入队
 				a.taskRequeue(&taskheap.TaskItem{
@@ -366,8 +406,11 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 				return err
 			}
 		case schema.RemoteTaskDone:
-			// 正常不会进入
-			continue
+			if err := a.toolFinished(obj.TaskId, obj.Tool.ToolCallId, obj.Content); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unknown remote task status %q", obj.Status)
 		}
 	}
 
@@ -381,7 +424,12 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 
 func (a *Agent) toolResume(contextId, taskId, toolName, toolCallId, content string) error {
 	t := a.toolMap[toolName]
-	_, err := t.Resume(context.Background(), a.base.User.Token, contextId, taskId, content)
+	if t == nil {
+		return fmt.Errorf("task tool %q is unavailable", toolName)
+	}
+	resumeCtx, cancel := context.WithTimeout(a.ctx, 10*time.Minute)
+	defer cancel()
+	result, err := t.Resume(resumeCtx, a.base.User.Token, contextId, taskId, content)
 	if err != nil {
 		a.taskRequeue(&taskheap.TaskItem{
 			ContextId:  contextId,
@@ -392,6 +440,14 @@ func (a *Agent) toolResume(contextId, taskId, toolName, toolCallId, content stri
 		return nil
 	}
 
+	if result == nil {
+		return errors.New("tool resume returned no result")
+	}
+	if result.TaskId == "" || result.Status == tool.TaskCompleted || result.Status == tool.TaskFailed ||
+		result.Status == tool.TaskCanceled || result.Status == tool.TaskRejected ||
+		result.Status == tool.TaskAuthRequired {
+		return a.toolFinished(taskId, toolCallId, result.Content)
+	}
 	err = a.base.Store.UpdateRemoteTaskStore(
 		bson.M{"conversation": a.id, "context_id": contextId, "task_id": taskId},
 		bson.M{"$set": bson.M{"status": schema.RemoteTaskSubmitted}},
@@ -416,8 +472,7 @@ func (a *Agent) taskRequeue(item *taskheap.TaskItem) {
 }
 
 func (a *Agent) waitToolResult() error {
-	// TODO
-	// 需要增加超长任务中断机制，避免因任务长时间运行导致 agent 死循环使资源无法释放
+	// The runner context bounds the total lifetime, including input waits.
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 

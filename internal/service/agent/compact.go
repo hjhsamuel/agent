@@ -1,7 +1,7 @@
 package agent
 
 import (
-	"context"
+	"errors"
 
 	"github.com/hjhsamuel/agent/internal/db/schema"
 	"github.com/hjhsamuel/agent/internal/service/agent/compact"
@@ -20,7 +20,7 @@ func (a *Agent) compact() error {
 	}
 	messages := compact.ConvertMessages(preSummary, a.runtime.OldMessages)
 	response, err := a.base.Compact.Chat(
-		context.Background(),
+		a.ctx,
 		prompts.CompactSystemPrompt,
 		messages,
 		&provider.ChatConfig{
@@ -29,6 +29,9 @@ func (a *Agent) compact() error {
 	)
 	if err != nil {
 		return err
+	}
+	if response.Content == "" {
+		return errors.New("model returned an empty conversation summary")
 	}
 	err = a.base.Store.AddConversationCompaction(&schema.Compaction{
 		Conversation: a.id,

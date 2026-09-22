@@ -12,7 +12,7 @@ import (
 
 func (d *Dao) CreateConversation(obj *schema.Conversation) (string, error) {
 	collection := d.getCollection(schema.ConversationCollection)
-	result, err := collection.InsertOne(context.Background(), obj)
+	result, err := collection.InsertOne(d.context(), obj)
 	if err != nil {
 		return "", err
 	}
@@ -23,7 +23,7 @@ func (d *Dao) CreateConversation(obj *schema.Conversation) (string, error) {
 
 func (d *Dao) GetConversation(filter bson.M) (*schema.Conversation, error) {
 	collection := d.getCollection(schema.ConversationCollection)
-	result := collection.FindOne(context.Background(), filter)
+	result := collection.FindOne(d.context(), filter)
 	if err := result.Err(); err != nil {
 		return nil, err
 	}
@@ -40,13 +40,13 @@ func (d *Dao) ListConversations(
 	opts ...options.Lister[options.FindOptions],
 ) ([]*schema.Conversation, error) {
 	collection := d.getCollection(schema.ConversationCollection)
-	cursor, err := collection.Find(context.Background(), filter, opts...)
+	cursor, err := collection.Find(d.context(), filter, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	var objs []*schema.Conversation
-	if err = cursor.All(context.Background(), &objs); err != nil {
+	if err = cursor.All(d.context(), &objs); err != nil {
 		return nil, err
 	}
 
@@ -55,16 +55,54 @@ func (d *Dao) ListConversations(
 
 func (d *Dao) UpdateConversation(filter bson.M, update bson.M) error {
 	collection := d.getCollection(schema.ConversationCollection)
-	_, err := collection.UpdateOne(context.Background(), filter, update)
+	result, err := collection.UpdateOne(d.context(), filter, update)
 	if err != nil {
 		return err
+	}
+	if result.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
 	}
 	return nil
 }
 
+// BeginConversation atomically claims an idle conversation and saves its input.
+func (d *Dao) BeginConversation(id bson.ObjectID, user, content string) error {
+	session, err := d.StartSession()
+	if err != nil {
+		return err
+	}
+	defer session.EndSession(d.context())
+	_, err = session.WithTransaction(d.context(), func(ctx context.Context) (any, error) {
+		result, err := d.getCollection(schema.ConversationCollection).UpdateOne(
+			ctx,
+			bson.M{
+				"_id":  id,
+				"user": user,
+				"status": bson.M{
+					"$in": []schema.ConversationState{
+						schema.ConversationTemp,
+						schema.ConversationDone,
+						schema.ConversationFailed,
+					},
+				},
+				"active_tools.0": bson.M{"$exists": false},
+			},
+			bson.M{"$set": bson.M{"status": schema.ConversationActive}})
+		if err != nil {
+			return nil, err
+		}
+		if result.MatchedCount == 0 {
+			return nil, mongo.ErrNoDocuments
+		}
+		_, err = d.getCollection(schema.MessageCollection).InsertOne(ctx, &schema.Message{Conversation: id, Role: provider.RoleUser, Content: content})
+		return nil, err
+	})
+	return err
+}
+
 func (d *Dao) AddConversationMessage(objs ...*schema.Message) error {
 	collection := d.getCollection(schema.MessageCollection)
-	_, err := collection.InsertMany(context.Background(), objs)
+	_, err := collection.InsertMany(d.context(), objs)
 	if err != nil {
 		return err
 	}
@@ -76,13 +114,13 @@ func (d *Dao) GetConversationMessages(
 	opts ...options.Lister[options.FindOptions],
 ) ([]*schema.Message, error) {
 	collection := d.getCollection(schema.MessageCollection)
-	cursor, err := collection.Find(context.Background(), filter, opts...)
+	cursor, err := collection.Find(d.context(), filter, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	var objs []*schema.Message
-	if err = cursor.All(context.Background(), &objs); err != nil {
+	if err = cursor.All(d.context(), &objs); err != nil {
 		return nil, err
 	}
 	return objs, nil
@@ -93,7 +131,7 @@ func (d *Dao) GetConversationCompaction(
 	opts ...options.Lister[options.FindOneOptions],
 ) (*schema.Compaction, error) {
 	collection := d.getCollection(schema.CompactCollection)
-	result := collection.FindOne(context.Background(), filter, opts...)
+	result := collection.FindOne(d.context(), filter, opts...)
 	if err := result.Err(); err != nil {
 		return nil, err
 	}
@@ -108,13 +146,13 @@ func (d *Dao) GetConversationCompaction(
 
 func (d *Dao) ListConversationCompactions(filter bson.M) ([]*schema.Compaction, error) {
 	collection := d.getCollection(schema.CompactCollection)
-	cursor, err := collection.Find(context.Background(), filter)
+	cursor, err := collection.Find(d.context(), filter)
 	if err != nil {
 		return nil, err
 	}
 
 	var objs []*schema.Compaction
-	if err = cursor.All(context.Background(), &objs); err != nil {
+	if err = cursor.All(d.context(), &objs); err != nil {
 		return nil, err
 	}
 	return objs, nil
@@ -122,7 +160,7 @@ func (d *Dao) ListConversationCompactions(filter bson.M) ([]*schema.Compaction, 
 
 func (d *Dao) AddConversationCompaction(obj *schema.Compaction) error {
 	collection := d.getCollection(schema.CompactCollection)
-	_, err := collection.InsertOne(context.Background(), obj)
+	_, err := collection.InsertOne(d.context(), obj)
 	if err != nil {
 		return err
 	}
@@ -151,7 +189,6 @@ func (d *Dao) ActiveTaskFinished(
 		if task.TaskId != "" {
 			remoteUpdates = append(remoteUpdates, mongo.NewUpdateOneModel().
 				SetFilter(bson.M{
-					"context_id":        task.TaskId,
 					"task_id":           task.TaskId,
 					"conversation":      conversationId,
 					"tool.tool_call_id": task.ToolCallId,
@@ -172,7 +209,7 @@ func (d *Dao) ActiveTaskFinished(
 		remoteTaskColl   = d.getCollection(schema.RemoteTaskStoreCollection)
 	)
 
-	ctx := context.Background()
+	ctx := d.context()
 
 	session, err := d.StartSession()
 	if err != nil {
@@ -181,7 +218,7 @@ func (d *Dao) ActiveTaskFinished(
 	defer session.EndSession(ctx)
 
 	var id bson.ObjectID
-	_, err = session.WithTransaction(context.Background(), func(sc context.Context) (any, error) {
+	_, err = session.WithTransaction(d.context(), func(sc context.Context) (any, error) {
 		// 添加消息
 		result, err := messageColl.InsertMany(sc, newMessages)
 		if err != nil {
@@ -225,7 +262,7 @@ func (d *Dao) AddMessageWithToolCalls(
 		id               bson.ObjectID
 	)
 
-	ctx := context.Background()
+	ctx := d.context()
 
 	session, err := d.StartSession()
 	if err != nil {
@@ -233,7 +270,7 @@ func (d *Dao) AddMessageWithToolCalls(
 	}
 	defer session.EndSession(ctx)
 
-	_, err = session.WithTransaction(context.Background(), func(sc context.Context) (any, error) {
+	_, err = session.WithTransaction(d.context(), func(sc context.Context) (any, error) {
 		// 添加消息
 		result, err := messageColl.InsertOne(sc, message)
 		if err != nil {

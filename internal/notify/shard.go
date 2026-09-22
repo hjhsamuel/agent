@@ -32,7 +32,10 @@ func (s *shard) Heartbeat(id string) {
 }
 
 func (s *shard) PushEvent(id string, event SSEvent) {
-	s.events <- &UpperEvent{ID: id, Event: event}
+	select {
+	case s.events <- &UpperEvent{ID: id, Event: event}:
+	case <-s.ctx.Done():
+	}
 }
 
 func (s *shard) Do() {

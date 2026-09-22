@@ -73,11 +73,7 @@ func (a *A2A) Execute(
 	response := &tool.ToolResult{}
 	switch v := result.(type) {
 	case *a2a.Task:
-		// 任务
-		// 由于配置了 return_immediately: true，因此返回的状态应该是 submitted 和 working
-		response.ContextId = v.ContextID
-		response.TaskId = string(v.ID)
-		response.Status = StatusReflect(v.Status.State)
+		return taskResult(v), nil
 	case *a2a.Message:
 		// 简单交互
 		response.Content = FormatMessage(v)
@@ -115,11 +111,7 @@ func (a *A2A) Resume(
 	response := &tool.ToolResult{}
 	switch v := result.(type) {
 	case *a2a.Task:
-		// 任务
-		// 由于配置了 return_immediately: true，因此返回的状态应该是 submitted 和 working
-		response.ContextId = v.ContextID
-		response.TaskId = string(v.ID)
-		response.Status = StatusReflect(v.Status.State)
+		return taskResult(v), nil
 	case *a2a.Message:
 		// 简单交互
 		response.Content = FormatMessage(v)
@@ -174,6 +166,16 @@ func NewA2A(
 		description: description,
 		client:      client,
 	}
+}
+
+func taskResult(task *a2a.Task) *tool.ToolResult {
+	result := &tool.ToolResult{ContextId: task.ContextID, TaskId: string(task.ID), Status: StatusReflect(task.Status.State)}
+	if task.Status.State == a2a.TaskStateCompleted {
+		result.Content = FormatArtifacts(task.Artifacts)
+	} else if task.Status.Message != nil {
+		result.Content = FormatMessage(task.Status.Message)
+	}
+	return result
 }
 
 func FormatArtifacts(artifacts []*a2a.Artifact) string {

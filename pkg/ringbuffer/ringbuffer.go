@@ -18,10 +18,14 @@ type RingBuffer[T any] struct {
 	mask  uint64
 	size  uint64
 
-	writeSeq uint64
-	latest   atomic.Uint64
-	notify   chan struct{}
-	readGen  atomic.Uint64
+	writeSeq   uint64
+	latest     atomic.Uint64
+	subscriber atomic.Pointer[subscription]
+}
+
+type subscription struct {
+	notify chan struct{}
+	done   chan struct{}
 }
 
 func (r *RingBuffer[T]) Push(value T) uint64 {
@@ -38,10 +42,11 @@ func (r *RingBuffer[T]) Push(value T) uint64 {
 	r.slots[index].record.Store(record)
 	r.latest.Store(seq)
 
-	select {
-	case r.notify <- struct{}{}:
-	default:
-
+	if sub := r.subscriber.Load(); sub != nil {
+		select {
+		case sub.notify <- struct{}{}:
+		default:
+		}
 	}
 
 	return seq
@@ -65,7 +70,10 @@ func (r *RingBuffer[T]) OldestSeq() uint64 {
 }
 
 func (r *RingBuffer[T]) Subscribe(afterSeq uint64) *Consumer[T] {
-	gen := r.readGen.Add(1)
+	sub := &subscription{notify: make(chan struct{}, 1), done: make(chan struct{})}
+	if previous := r.subscriber.Swap(sub); previous != nil {
+		close(previous.done)
+	}
 	var nextSeq uint64
 	if afterSeq == 0 {
 		oldest := r.OldestSeq()
@@ -79,9 +87,9 @@ func (r *RingBuffer[T]) Subscribe(afterSeq uint64) *Consumer[T] {
 	}
 
 	return &Consumer[T]{
+		sub:     sub,
 		ring:    r,
 		nextSeq: nextSeq,
-		gen:     gen,
 	}
 }
 
@@ -92,9 +100,8 @@ func NewRingBuffer[T any](capacity uint64) (*RingBuffer[T], error) {
 	}
 
 	return &RingBuffer[T]{
-		slots:  make([]slot[T], capacity),
-		mask:   capacity - 1,
-		size:   capacity,
-		notify: make(chan struct{}, 1),
+		slots: make([]slot[T], capacity),
+		mask:  capacity - 1,
+		size:  capacity,
 	}, nil
 }

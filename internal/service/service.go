@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/hjhsamuel/agent/config"
 	"github.com/hjhsamuel/agent/internal/db"
@@ -19,9 +22,13 @@ import (
 )
 
 type Service struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	startOnce sync.Once
+	closeOnce sync.Once
+	running   atomic.Bool
+	requests  *requestGate
 
 	tools     *tool.Manager
 	providers *llm.Manager
@@ -31,40 +38,83 @@ type Service struct {
 	skills []*skill.Skill
 
 	agents *shard.Manager // 会话agent
-	done   chan bson.ObjectID
 	events chan *notify.UpperEvent
 }
 
 func (s *Service) Start() error {
-	ctx, cancel := context.WithCancel(context.Background())
-	s.ctx = ctx
-	s.cancel = cancel
-
-	s.notify.Start()
-
-	s.wg.Add(1)
-	go s.agentEvent()
-
+	started := false
+	s.startOnce.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.ctx = ctx
+		s.cancel = cancel
+		s.requests = newRequestGate()
+		s.notify.Start()
+		s.wg.Add(1)
+		go s.agentEvent()
+		s.running.Store(true)
+		started = true
+	})
+	if !started {
+		return errors.New("service has already been started or closed")
+	}
 	return nil
 }
 
 func (s *Service) Close() {
-	s.cancel()
+	s.closeOnce.Do(s.close)
+}
 
-	s.notify.Close()
-
+func (s *Service) close() {
+	// Wait for initialization, or prevent a later Start if Close won the race.
+	s.startOnce.Do(func() {})
+	s.running.Store(false)
+	if s.requests != nil {
+		s.requests.stop()
+	}
+	if s.cancel != nil {
+		s.cancel()
+	}
+	// Start may add runner goroutines, so finish admitted requests before Wait.
+	if s.requests != nil {
+		s.requests.wait()
+	}
+	if s.agents != nil {
+		s.agents.Close()
+	}
+	if s.notify != nil {
+		s.notify.Close()
+	}
 	s.wg.Wait()
+	if s.store != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.store.Disconnect(ctx)
+	}
+}
+
+func (s *Service) beginRequest() error {
+	if !s.running.Load() || !s.requests.acquire() {
+		return errors.New("service is not running")
+	}
+	return nil
 }
 
 func NewService(c *config.Config) (*Service, error) {
 	s := &Service{
-		done:   make(chan bson.ObjectID, 128),
 		events: make(chan *notify.UpperEvent, 1024),
 	}
 
 	if err := initStorage(c, s); err != nil {
 		return nil, err
 	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.store.Disconnect(ctx)
+		}
+	}()
 	if err := initProvider(c, s); err != nil {
 		return nil, err
 	}
@@ -78,6 +128,7 @@ func NewService(c *config.Config) (*Service, error) {
 		return nil, err
 	}
 
+	initialized = true
 	return s, nil
 }
 

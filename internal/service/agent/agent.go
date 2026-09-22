@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/hjhsamuel/agent/internal/db/schema"
+	"github.com/hjhsamuel/agent/internal/service/agent/prompts"
 	"github.com/hjhsamuel/agent/internal/service/agent/taskheap"
 	"github.com/hjhsamuel/agent/pkg/provider"
 	"github.com/hjhsamuel/agent/pkg/tool"
@@ -25,6 +26,7 @@ type AgentItf interface {
 //
 // main agent 方法
 type MainAgent interface {
+	Wait()
 	// Start 开启会话
 	Start(content string) error
 }
@@ -164,7 +166,7 @@ func NewAgent(
 	conversationId bson.ObjectID,
 	baseConfig *BaseConfig,
 ) AgentItf {
-	mainCtx, mainCancel := context.WithCancel(context.Background())
+	mainCtx, mainCancel := context.WithCancel(ctx)
 
 	toolMap := make(map[string]tool.Tool)
 	for _, item := range baseConfig.Tools {
@@ -173,6 +175,7 @@ func NewAgent(
 	}
 
 	return &Agent{
+		prompt:  prompts.GlobalSystemPrompt,
 		ctx:     ctx,
 		id:      conversationId,
 		base:    baseConfig,

@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/gin-contrib/sse"
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/internal/db/schema"
 	"github.com/hjhsamuel/agent/internal/entities"
@@ -21,13 +23,18 @@ func (s *Service) ListenSSE(
 	id string,
 	seq uint64,
 ) error {
+	if err := s.beginRequest(); err != nil {
+		return err
+	}
+	defer s.requests.release()
+	store := s.store.WithContext(c.Request.Context())
 	var (
 		conversationId string
 		err            error
 		events         []*notify.InputRequiredItem
 	)
 	if id == "" {
-		conversationId, err = s.store.CreateConversation(&schema.Conversation{
+		conversationId, err = store.CreateConversation(&schema.Conversation{
 			User:   userId,
 			Status: schema.ConversationTemp,
 		})
@@ -39,7 +46,7 @@ func (s *Service) ListenSSE(
 		if err != nil {
 			return err
 		}
-		objs, err := s.store.ListConversations(bson.M{"_id": objectId, "user": userId})
+		objs, err := store.ListConversations(bson.M{"_id": objectId, "user": userId})
 		if err != nil {
 			return err
 		}
@@ -47,10 +54,10 @@ func (s *Service) ListenSSE(
 			return errors.New("conversation not found")
 		}
 
-		conversationId = id
+		conversationId = objectId.Hex()
 
 		// 检索会话是否存在需要用户输入的任务
-		tasks, err := s.store.ListRemoteTaskStores(bson.M{
+		tasks, err := store.ListRemoteTaskStores(bson.M{
 			"conversation": objectId,
 			"status":       schema.RemoteTaskWaitingInput,
 		})
@@ -76,18 +83,28 @@ func (s *Service) ListenSSE(
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 
 	// 创建缓存后回传会话id
-	c.Render(-1, (&notify.InitEvent{ID: conversationId}).Event())
-	c.Writer.Flush()
+	if err := sendSSE(c, (&notify.InitEvent{ID: conversationId}).Event()); err != nil {
+		return err
+	}
 
 	if len(events) != 0 {
-		c.Render(-1, (&notify.InputRequiredEvent{Events: events}).Event())
-		c.Writer.Flush()
+		if err := sendSSE(c, (&notify.InputRequiredEvent{Events: events}).Event()); err != nil {
+			return err
+		}
 	}
 
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
+	// Replay buffered events even if the old reader consumed the notification.
+	if err := s.drainAndSendSSEvent(c, consumer); err != nil {
+		return err
+	}
 	for {
 		select {
+		case <-s.ctx.Done():
+			return nil
+		case <-consumer.Done():
+			return nil
 		case <-c.Request.Context().Done():
 			return nil
 		case <-consumer.Notify():
@@ -96,6 +113,9 @@ func (s *Service) ListenSSE(
 			}
 		case <-ticker.C:
 			s.notify.Touch(conversationId)
+			if err := sendSSE(c, sse.Event{Event: "heartbeat", Data: ""}); err != nil {
+				return err
+			}
 		}
 	}
 }
@@ -112,8 +132,9 @@ func (s *Service) drainAndSendSSEvent(
 				Oldest: e.OldestSeq,
 				Latest: e.LatestSeq,
 			}
-			c.Render(-1, event.Event())
-			c.Writer.Flush()
+			if writeErr := sendSSE(c, event.Event()); writeErr != nil {
+				return writeErr
+			}
 		}
 		return err
 	}
@@ -121,25 +142,45 @@ func (s *Service) drainAndSendSSEvent(
 	for _, event := range events {
 		out := event.Value.Event()
 		out.Id = strconv.FormatUint(event.Seq, 10)
-		c.Render(-1, out)
-		c.Writer.Flush()
+		if err := sendSSE(c, out); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
+func sendSSE(c *gin.Context, event sse.Event) error {
+	controller := http.NewResponseController(c.Writer)
+	if err := controller.SetWriteDeadline(time.Now().Add(15 * time.Second)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
+	if err := event.Render(c.Writer); err != nil {
+		return err
+	}
+	return controller.Flush()
+}
+
 func (s *Service) Chat(user *entities.UserInfo, id string, content string) error {
+	if user == nil || content == "" {
+		return errors.New("user and content are required")
+	}
+	if err := s.beginRequest(); err != nil {
+		return err
+	}
+	defer s.requests.release()
 	conversationId, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return err
 	}
+	id = conversationId.Hex()
 
 	provider, err := s.providers.Get(schema.ChatModel)
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(s.ctx, 24*time.Hour)
 	runner := agent.NewAgent(
 		ctx,
 		conversationId,
@@ -149,17 +190,21 @@ func (s *Service) Chat(user *entities.UserInfo, id string, content string) error
 			Tools:    s.tools.All(),
 			Provider: provider,
 			Compact:  provider,
-			Store:    s.store,
+			Store:    s.store.WithContext(ctx),
 			Up:       s.events,
-			Exit:     s.done,
+			Shutdown: s.ctx.Done(),
 		},
 	)
+	if !s.agents.Set(cancel, id, runner) {
+		cancel()
+		return errors.New("conversation is already running")
+	}
 	if err := runner.Start(content); err != nil {
+		s.agents.Delete(conversationId.Hex())
 		cancel()
 		return err
 	}
 
-	s.agents.Set(cancel, conversationId.Hex(), runner)
 	return nil
 }
 
@@ -168,14 +213,24 @@ func (s *Service) agentEvent() {
 	for {
 		select {
 		case <-s.ctx.Done():
-			break
-		case id := <-s.done:
-			s.agents.Delete(id.Hex())
-			_ = s.store.UpdateConversation(
-				bson.M{"_id": id},
-				bson.M{"$set": bson.M{"status": schema.ConversationDone}},
-			)
+			return
 		case event := <-s.events:
+			if event.Finished {
+				id, _ := bson.ObjectIDFromHex(event.ID)
+				state := schema.ConversationDone
+				var terminal notify.SSEvent = &notify.DoneEvent{}
+				if event.Error != nil {
+					state = schema.ConversationFailed
+					terminal = &notify.ErrorEvent{Error: event.Error.Error()}
+				}
+				err := s.store.WithContext(s.ctx).UpdateConversation(bson.M{"_id": id}, bson.M{"$set": bson.M{"status": state}})
+				if err != nil {
+					terminal = &notify.ErrorEvent{Error: err.Error()}
+				}
+				s.notify.PushEvent(event.ID, terminal)
+				s.agents.Delete(event.ID)
+				continue
+			}
 			if event.Heartbeat {
 				s.notify.Touch(event.ID)
 			} else {

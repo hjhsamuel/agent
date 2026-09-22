@@ -16,6 +16,10 @@ type LLM struct {
 	provider provider.Provider
 }
 
+func New(model string, capabilities *schema.ModelCapabilities, implementation provider.Provider) *LLM {
+	return &LLM{Model: model, Capabilities: capabilities, provider: implementation}
+}
+
 func (l *LLM) Chat(
 	ctx context.Context,
 	prompt string,
@@ -56,7 +60,9 @@ func (l *LLM) Stream(
 	for attempt := 0; attempt < 3; attempt++ {
 		response, err = l.provider.Stream(ctx, l.Model, prompt, messages, conf, yield)
 		if err != nil {
-			_ = yield(nil, err)
+			if yieldErr := yield(nil, err); yieldErr != nil {
+				return nil, yieldErr
+			}
 			wErr := backoff.Wait(ctx, retry.Delay(attempt))
 			if wErr != nil {
 				return nil, wErr

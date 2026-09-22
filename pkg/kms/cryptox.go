@@ -57,6 +57,9 @@ func Decrypt(key, ciphertext, nonce []byte) (string, error) {
 		return "", err
 	}
 
+	if len(nonce) != gcm.NonceSize() {
+		return "", fmt.Errorf("invalid nonce length: %d", len(nonce))
+	}
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return "", err
