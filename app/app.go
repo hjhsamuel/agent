@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -42,17 +44,30 @@ func Start() error {
 		Addr:    net.JoinHostPort(conf.Server.Host, strconv.Itoa(conf.Server.Port)),
 		Handler: r,
 	}
-	go func() {
-		_ = httpSrv.ListenAndServe()
-	}()
-
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
+	defer signal.Stop(sig)
+	return serveHTTP(httpSrv, sig)
+}
+
+func serveHTTP(httpSrv *http.Server, sig <-chan os.Signal) error {
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- httpSrv.ListenAndServe() }()
+	select {
+	case err := <-serveErr:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return fmt.Errorf("serve HTTP: %w", err)
+	case <-sig:
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = httpSrv.Shutdown(ctx)
+	if err := httpSrv.Shutdown(ctx); err != nil {
+		_ = httpSrv.Close()
+		return fmt.Errorf("shutdown HTTP: %w", err)
+	}
 
 	return nil
 }

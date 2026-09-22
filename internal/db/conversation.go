@@ -73,6 +73,17 @@ func (d *Dao) BeginConversation(id bson.ObjectID, user, content string) error {
 	}
 	defer session.EndSession(d.context())
 	_, err = session.WithTransaction(d.context(), func(ctx context.Context) (any, error) {
+		var conversation schema.Conversation
+		if err := d.getCollection(schema.ConversationCollection).FindOne(ctx, bson.M{"_id": id, "user": user}).Decode(&conversation); err != nil {
+			return nil, err
+		}
+		// Repair failed conversations left with pending tools by older versions.
+		// This transaction also saves the next user input, preserving message order.
+		if conversation.Status == schema.ConversationFailed {
+			if err := d.closeActiveTools(ctx, &conversation, "Previous local execution failed or was canceled."); err != nil {
+				return nil, err
+			}
+		}
 		result, err := d.getCollection(schema.ConversationCollection).UpdateOne(
 			ctx,
 			bson.M{
@@ -97,6 +108,57 @@ func (d *Dao) BeginConversation(id bson.ObjectID, user, content string) error {
 		_, err = d.getCollection(schema.MessageCollection).InsertOne(ctx, &schema.Message{Conversation: id, Role: provider.RoleUser, Content: content})
 		return nil, err
 	})
+	return err
+}
+
+// FinishConversation commits terminal state and paired tool results together.
+// Its context must belong to the service, not to the canceled runner.
+func (d *Dao) FinishConversation(id bson.ObjectID, state schema.ConversationState, reason string) error {
+	session, err := d.StartSession()
+	if err != nil {
+		return err
+	}
+	defer session.EndSession(d.context())
+	_, err = session.WithTransaction(d.context(), func(ctx context.Context) (any, error) {
+		var conversation schema.Conversation
+		if err := d.getCollection(schema.ConversationCollection).FindOne(ctx, bson.M{"_id": id}).Decode(&conversation); err != nil {
+			return nil, err
+		}
+		if state == schema.ConversationFailed {
+			if err := d.closeActiveTools(ctx, &conversation, reason); err != nil {
+				return nil, err
+			}
+		}
+		_, err := d.getCollection(schema.ConversationCollection).UpdateOne(ctx,
+			bson.M{"_id": id}, bson.M{"$set": bson.M{"status": state}})
+		return nil, err
+	})
+	return err
+}
+
+func (d *Dao) closeActiveTools(ctx context.Context, conversation *schema.Conversation, reason string) error {
+	if len(conversation.ActiveTools) == 0 {
+		return nil
+	}
+	content := "Local tool waiting stopped: " + reason +
+		" Remote execution may still be running or may already have completed; its outcome is unknown. Do not automatically repeat the operation."
+	messages := make([]*schema.Message, 0, len(conversation.ActiveTools))
+	callIDs := make([]string, 0, len(conversation.ActiveTools))
+	for _, active := range conversation.ActiveTools {
+		messages = append(messages, &schema.Message{Conversation: conversation.ID, Role: provider.RoleTool, ToolCallId: active.ToolCallId, Content: content})
+		callIDs = append(callIDs, active.ToolCallId)
+	}
+	if _, err := d.getCollection(schema.MessageCollection).InsertMany(ctx, messages); err != nil {
+		return err
+	}
+	// RemoteTaskDone ends local polling only; content explicitly records uncertainty.
+	if _, err := d.getCollection(schema.RemoteTaskStoreCollection).UpdateMany(ctx,
+		bson.M{"conversation": conversation.ID, "tool.tool_call_id": bson.M{"$in": callIDs}},
+		bson.M{"$set": bson.M{"status": schema.RemoteTaskDone, "content": content}}); err != nil {
+		return err
+	}
+	_, err := d.getCollection(schema.ConversationCollection).UpdateOne(ctx,
+		bson.M{"_id": conversation.ID}, bson.M{"$set": bson.M{"active_tools": bson.A{}}})
 	return err
 }
 

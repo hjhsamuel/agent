@@ -6,20 +6,21 @@ import (
 
 	"github.com/hjhsamuel/agent/internal/service/agent/prompts"
 	"github.com/hjhsamuel/agent/pkg/provider"
+	"github.com/hjhsamuel/agent/pkg/tool"
 )
 
 // ConvertMessages
 //
 // 由于 tool_call_id 未被填充，因此需要保证参与压缩的消息中，不存在未完成的 tool call
 func ConvertMessages(preSummary string, messages []*provider.Message) []*provider.Message {
-	userMessage := convertMessages(preSummary, messages)
+	userMessage := BuildMessages(preSummary, messages)
 	return []*provider.Message{
 		{Role: provider.RoleSystem, Content: prompts.CompactSystemPrompt},
 		{Role: provider.RoleUser, Content: userMessage},
 	}
 }
 
-func convertMessages(preSummary string, messages []*provider.Message) string {
+func BuildMessages(preSummary string, messages []*provider.Message) string {
 	parts := make([]string, 0)
 	for _, message := range messages {
 		switch message.Role {
@@ -39,7 +40,7 @@ func convertMessages(preSummary string, messages []*provider.Message) string {
 				parts = append(parts, "[Assistant tool calls]: "+strings.Join(toolCalls, " ;"))
 			}
 		case provider.RoleTool:
-			result := Truncate(message.Content)
+			result := tool.Truncate(message.Content)
 			parts = append(parts, "[Tool result]: "+result.Content)
 		}
 	}

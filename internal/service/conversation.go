@@ -218,12 +218,14 @@ func (s *Service) agentEvent() {
 			if event.Finished {
 				id, _ := bson.ObjectIDFromHex(event.ID)
 				state := schema.ConversationDone
+				reason := ""
 				var terminal notify.SSEvent = &notify.DoneEvent{}
 				if event.Error != nil {
 					state = schema.ConversationFailed
+					reason = event.Error.Error()
 					terminal = &notify.ErrorEvent{Error: event.Error.Error()}
 				}
-				err := s.store.WithContext(s.ctx).UpdateConversation(bson.M{"_id": id}, bson.M{"$set": bson.M{"status": state}})
+				err := s.store.WithContext(s.ctx).FinishConversation(id, state, reason)
 				if err != nil {
 					terminal = &notify.ErrorEvent{Error: err.Error()}
 				}

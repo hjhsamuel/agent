@@ -6,7 +6,6 @@ import (
 
 	"github.com/hjhsamuel/agent/internal/db/schema"
 	"github.com/hjhsamuel/agent/internal/notify"
-	"github.com/hjhsamuel/agent/internal/service/agent/compact"
 	"github.com/hjhsamuel/agent/internal/service/agent/prompts"
 	"github.com/hjhsamuel/agent/internal/service/agent/resolver"
 	"github.com/hjhsamuel/agent/internal/service/agent/taskheap"
@@ -22,31 +21,34 @@ func (a *Agent) resolveInputRequired(items ...*resolver.InputRequiredItem) error
 	}
 	defer func() {
 		for _, item := range items {
-			a.taskRequeue(&taskheap.TaskItem{ContextId: item.ContextId, TaskId: item.TaskId, ToolCallId: item.ToolCallId, ToolName: item.ToolName})
+			a.taskRequeue(&taskheap.TaskItem{
+				ContextId:  item.ContextId,
+				TaskId:     item.TaskId,
+				ToolCallId: item.ToolCallId,
+				ToolName:   item.ToolName,
+			})
 		}
 	}()
 
+	history := append(append([]*provider.Message(nil), a.runtime.OldMessages...), a.runtime.NewMessages...)
 	var (
-		messages = make([]*provider.Message, 0, len(items))
-		itemMap  = make(map[string]*resolver.InputRequiredItem)
+		itemMap = make(map[string]*resolver.InputRequiredItem)
 	)
 	for _, item := range items {
-		messages = append(messages, item.Message)
+		history = append(history, item.Message)
 		itemMap[item.ToolCallId] = item
 	}
 
-	history := append(append([]*provider.Message(nil), a.runtime.OldMessages...), a.runtime.NewMessages...)
-	transcript := compact.ConvertMessages("", history)[1].Content
-	requests, err := json.Marshal(messages)
-	if err != nil {
-		return err
-	}
+	content := resolver.BuildMessages(history)
+
 	response, err := a.base.Provider.Chat(
 		a.ctx,
 		prompts.InputRequiredResolverSystemPrompt,
-		[]*provider.Message{{Role: provider.RoleUser, Content: transcript + "\nInput requests:\n" + string(requests)}},
+		[]*provider.Message{
+			{Role: provider.RoleUser, Content: content},
+		},
 		&provider.ChatConfig{
-			Temperature: 0,
+			Temperature: 0.1,
 			ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
 				OfJSONObject: &shared.ResponseFormatJSONObjectParam{
 					Type: "json_object",

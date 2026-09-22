@@ -1,4 +1,4 @@
-package compact
+package tool
 
 import (
 	"fmt"

@@ -2,8 +2,11 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -190,6 +193,76 @@ func TestResolverIgnoresUnknownDuplicateAndRequeuesOmissions(t *testing.T) {
 	}
 	if _, ok := store.updates[0]["$set"].(bson.M)["content"].(string); !ok {
 		t.Fatal("input stored as BSON binary")
+	}
+}
+
+func TestResolverRetainsSummaryAndRecentMessages(t *testing.T) {
+	store := &memoryStore{}
+	a := testAgent(t, store, modelStub{chat: func(messages []*provider.Message) (*provider.Message, error) {
+		transcript := messages[0].Content
+		for _, want := range []string{"User approved order 42 only.", "Continue the order.", "Order lookup succeeded."} {
+			if !strings.Contains(transcript, want) {
+				t.Errorf("resolver is missing %q: %s", want, transcript)
+			}
+		}
+		return &provider.Message{Content: `{"results":[{"tool_call_id":"a","action":"provide_input","input":{"order_id":42}}]}`}, nil
+	}})
+	a.runtime.OldMessages = []*provider.Message{
+		{Role: provider.RoleSystem, Content: "User approved order 42 only."},
+		{Role: provider.RoleUser, Content: "Continue the order."},
+	}
+	a.runtime.NewMessages = []*provider.Message{{Role: provider.RoleTool, Content: "Order lookup succeeded."}}
+	if err := a.resolveInputRequired(&resolver.InputRequiredItem{TaskId: "1", ToolCallId: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.updates) != 1 {
+		t.Fatal("resolver did not persist its decision")
+	}
+}
+
+func TestResolverPreservesToolCallAssociations(t *testing.T) {
+	history := []*provider.Message{
+		{Role: provider.RoleSystem, Content: "Only order 42 was approved."},
+		{Role: provider.RoleUser, Content: "Check both orders."},
+		{Role: provider.RoleAssistant, ToolCalls: []*provider.ToolCall{
+			{ID: "call-a", Name: "lookup", Arguments: `{"order":42}`},
+			{ID: "call-b", Name: "lookup", Arguments: `{"order":43}`},
+			{ID: "call-pending", Name: "submit", Arguments: `{"order":42}`},
+		}},
+	}
+	// Results may arrive out of order and contain data beyond compaction limits.
+	results := []*provider.Message{
+		{Role: provider.RoleTool, ToolCallId: "call-b", Content: "order 43: not approved"},
+		{Role: provider.RoleTool, ToolCallId: "call-a", Content: strings.Repeat("details\n", 10000) + "order 42: approved"},
+	}
+	request, err := resolver.BuildInputRequiredMessage("call-pending", "Which order is approved?", map[string]any{"type": "object"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHistory := append(append([]*provider.Message(nil), history...), results...)
+	a := testAgent(t, &memoryStore{}, modelStub{chat: func(messages []*provider.Message) (*provider.Message, error) {
+		if len(messages) != 1 || messages[0].Role != provider.RoleUser {
+			t.Fatal("pending tool history must be sent as resolver input data")
+		}
+		var input struct {
+			Conversation  []*provider.Message `json:"conversation"`
+			InputRequests []*provider.Message `json:"input_requests"`
+		}
+		if err := json.Unmarshal([]byte(messages[0].Content), &input); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(input.Conversation, wantHistory) {
+			t.Fatal("resolver lost message content, call arguments, IDs, or message order")
+		}
+		if !reflect.DeepEqual(input.InputRequests, []*provider.Message{request}) {
+			t.Fatal("resolver lost the pending request ID or schema")
+		}
+		return &provider.Message{Content: `{"results":[{"tool_call_id":"call-pending","action":"provide_input","input":{"order":42}}]}`}, nil
+	}})
+	a.runtime.OldMessages = history
+	a.runtime.NewMessages = results
+	if err := a.resolveInputRequired(&resolver.InputRequiredItem{TaskId: "task", ToolCallId: "call-pending", Message: request}); err != nil {
+		t.Fatal(err)
 	}
 }
 
