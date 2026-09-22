@@ -19,7 +19,7 @@ import (
 
 func (a *Agent) loopDefer(err error) {
 	if a.runtime.main != nil {
-		a.runtime.main.cancel()
+		err = errors.Join(err, a.closeChildren())
 	}
 	select {
 	case a.base.Up <- &notify.UpperEvent{ID: a.id.Hex(), Finished: true, Error: err}:
@@ -40,6 +40,10 @@ func (a *Agent) loop() {
 }
 
 func (a *Agent) emit(event notify.SSEvent) error {
+	// Subagent output is collected as a tool result, never a service event.
+	if !a.parent.IsZero() {
+		return a.ctx.Err()
+	}
 	select {
 	case a.base.Up <- &notify.UpperEvent{ID: a.id.Hex(), Event: event}:
 		return nil
@@ -207,6 +211,11 @@ func (a *Agent) recoverConversation() error {
 				return err
 			}
 		} else {
+			if t, ok := a.toolMap[toolCall.Name].(*subAgentTool); ok {
+				if _, err := t.lookup(a.ctx, remoteTask.ContextId, remoteTask.TaskId); err != nil {
+					return err
+				}
+			}
 			// 恢复
 			// 不需要调用，只需要定时获取结果即可
 			a.taskRequeue(&taskheap.TaskItem{
@@ -244,11 +253,15 @@ func (a *Agent) toolExecute(
 	// Do not automatically replay Execute without an idempotency contract.
 	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Minute)
 	defer cancel()
+	ctx = context.WithValue(ctx, subAgentCallKey{}, subAgentCall{message: messageId, id: toolCallId})
 	result, err := t.Execute(ctx, a.base.User.Token, arguments)
 
 	if err != nil {
 		if a.ctx.Err() != nil {
 			return a.ctx.Err()
+		}
+		if _, local := t.(*subAgentTool); local {
+			return err
 		}
 		// 远程工具暂时不可用，标记为结束状态
 		wErr := a.toolFinished("", toolCallId, err.Error())
@@ -268,6 +281,11 @@ func (a *Agent) toolExecute(
 		return a.toolFinished("", toolCallId, result.Content)
 	}
 	if result.TaskId != "" {
+		// Subagent creation persists the parent link atomically before starting.
+		if _, local := t.(*subAgentTool); local {
+			a.taskRequeue(&taskheap.TaskItem{ContextId: result.ContextId, TaskId: result.TaskId, ToolCallId: toolCallId, ToolName: name})
+			return nil
+		}
 		// 异步任务
 		// 添加记录
 		err = a.base.Store.CreateRemoteTaskStore(&schema.RemoteTaskStore{
@@ -356,6 +374,9 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 				err = errors.New("tool returned no task state")
 			}
 			if err != nil {
+				if _, local := t.(*subAgentTool); local {
+					return err
+				}
 				// 请求错误，重新入队
 				a.taskRequeue(&taskheap.TaskItem{
 					ContextId:  obj.ContextId,

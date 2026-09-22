@@ -34,8 +34,11 @@ type Runtime struct {
 }
 
 type MainRuntime struct {
-	ctx    context.Context
-	cancel context.CancelFunc // 用于结束 ring buffer 续期
+	ctx      context.Context
+	cancel   context.CancelFunc // 结束 main agent、心跳和所有 subagent
+	mu       sync.Mutex
+	children map[bson.ObjectID]*Agent
+	closed   bool
 }
 
 type BaseConfig struct {
@@ -67,6 +70,10 @@ type Store interface {
 	ListRemoteTaskStores(bson.M) ([]*schema.RemoteTaskStore, error)
 	CreateRemoteTaskStore(*schema.RemoteTaskStore) error
 	UpdateRemoteTaskStore(bson.M, bson.M) error
+	CreateSubAgentTask(bson.ObjectID, bson.ObjectID, string, string) (bson.ObjectID, error)
+	GetTaskStoreServer(bson.M) (*schema.TaskStoreServer, error)
+	FinishSubAgentTask(bson.ObjectID, bson.ObjectID, tool.TaskStatus, string) error
+	ResumeSubAgentTasks(bson.ObjectID, []*schema.RemoteTaskStore) error
 }
 
 var _ Store = (*db.Dao)(nil)

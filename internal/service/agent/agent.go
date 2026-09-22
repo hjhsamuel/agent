@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/hjhsamuel/agent/internal/db"
 	"github.com/hjhsamuel/agent/internal/db/schema"
 	"github.com/hjhsamuel/agent/internal/service/agent/prompts"
 	"github.com/hjhsamuel/agent/internal/service/agent/taskheap"
@@ -55,6 +56,7 @@ type Agent struct {
 
 	base    *BaseConfig
 	runtime *Runtime
+	sub     *subRuntime
 }
 
 func (a *Agent) ID() bson.ObjectID {
@@ -166,28 +168,47 @@ func NewAgent(
 	conversationId bson.ObjectID,
 	baseConfig *BaseConfig,
 ) AgentItf {
+	return NewMainAgent(ctx, conversationId, baseConfig).(*Agent)
+}
+
+// NewMainAgent creates a service-owned runner with its own subagent tool.
+func NewMainAgent(ctx context.Context, conversationId bson.ObjectID, baseConfig *BaseConfig) MainAgent {
 	mainCtx, mainCancel := context.WithCancel(ctx)
+	config := *baseConfig
+	config.Tools = nil
+	if dao, ok := config.Store.(*db.Dao); ok {
+		config.Store = dao.WithContext(mainCtx)
+	}
 
 	toolMap := make(map[string]tool.Tool)
 	for _, item := range baseConfig.Tools {
 		name := item.Define().GetFunction().Name
+		if name == subAgentToolName {
+			continue
+		}
 		toolMap[name] = item
+		config.Tools = append(config.Tools, item)
 	}
 
-	return &Agent{
+	a := &Agent{
 		prompt:  prompts.GlobalSystemPrompt,
-		ctx:     ctx,
+		ctx:     mainCtx,
 		id:      conversationId,
-		base:    baseConfig,
+		base:    &config,
 		toolMap: toolMap,
 		runtime: &Runtime{
 			OldMessages: make([]*provider.Message, 0),
 			NewMessages: make([]*provider.Message, 0),
 			tasks:       taskheap.NewManager(),
 			main: &MainRuntime{
-				ctx:    mainCtx,
-				cancel: mainCancel,
+				ctx:      mainCtx,
+				cancel:   mainCancel,
+				children: make(map[bson.ObjectID]*Agent),
 			},
 		},
 	}
+	t := &subAgentTool{owner: a}
+	a.toolMap[subAgentToolName] = t
+	a.base.Tools = append(a.base.Tools, t)
+	return a
 }

@@ -39,6 +39,7 @@ const (
 const TaskStoreServerCollection = "agent_task_store_server"
 
 type TaskStoreServer struct {
+	Parent    bson.ObjectID   `bson:"parent,omitempty"`
 	ID        bson.ObjectID   `bson:"_id,omitempty"`
 	ContextId string          `bson:"context_id"`
 	TaskId    string          `bson:"task_id"`

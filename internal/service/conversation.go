@@ -181,7 +181,7 @@ func (s *Service) Chat(user *entities.UserInfo, id string, content string) error
 	}
 
 	ctx, cancel := context.WithTimeout(s.ctx, 24*time.Hour)
-	runner := agent.NewAgent(
+	runner := agent.NewMainAgent(
 		ctx,
 		conversationId,
 		&agent.BaseConfig{

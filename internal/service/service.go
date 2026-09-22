@@ -37,7 +37,7 @@ type Service struct {
 
 	skills []*skill.Skill
 
-	agents *shard.Manager // 会话agent
+	agents *shard.Manager // 仅维护 main agent；subagent 由各 main agent 管理
 	events chan *notify.UpperEvent
 }
 
