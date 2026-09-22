@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"github.com/hjhsamuel/agent/internal/db/schema"
 	"github.com/hjhsamuel/agent/pkg/provider"
@@ -70,6 +72,9 @@ func (d *Dao) CreateTaskStoreServer(content string) (bson.ObjectID, error) {
 // CreateSubAgentTask commits the child and its parent's pending tool together.
 // Recovery can therefore find the child without repeating delegated work.
 func (d *Dao) CreateSubAgentTask(parent, message bson.ObjectID, callID, content string) (bson.ObjectID, error) {
+	if parent.IsZero() || message.IsZero() || callID == "" || strings.TrimSpace(content) == "" {
+		return bson.NilObjectID, errors.New("subagent parent, message, tool call and content are required")
+	}
 	return d.createTaskStoreServer(parent, message, callID, content)
 }
 
@@ -163,12 +168,28 @@ func (d *Dao) createTaskStoreServer(parent, message bson.ObjectID, callID, conte
 // FinishSubAgentTask publishes the result and closes the private conversation
 // in one transaction. Only the owning main agent may finish this task.
 func (d *Dao) FinishSubAgentTask(parent, id bson.ObjectID, status tool.TaskStatus, content string) error {
+	if parent.IsZero() || id.IsZero() {
+		return errors.New("subagent parent and task are required")
+	}
+	switch status {
+	case tool.TaskCompleted, tool.TaskFailed, tool.TaskCanceled, tool.TaskRejected, tool.TaskAuthRequired:
+	default:
+		return errors.New("subagent result must have a terminal status")
+	}
 	session, err := d.StartSession()
 	if err != nil {
 		return err
 	}
 	defer session.EndSession(d.context())
 	_, err = session.WithTransaction(d.context(), func(ctx context.Context) (any, error) {
+		var existing schema.TaskStoreServer
+		if err := d.getCollection(schema.TaskStoreServerCollection).FindOne(ctx, bson.M{"parent": parent, "task_id": id.Hex()}).Decode(&existing); err != nil {
+			return nil, err
+		}
+		switch existing.Status {
+		case tool.TaskCompleted, tool.TaskFailed, tool.TaskCanceled, tool.TaskRejected, tool.TaskAuthRequired:
+			return nil, nil // Never overwrite a committed outcome during retry/cleanup.
+		}
 		result, err := d.getCollection(schema.TaskStoreServerCollection).UpdateOne(ctx,
 			bson.M{"parent": parent, "task_id": id.Hex()},
 			bson.M{"$set": bson.M{"status": status, "artifacts": []string{content}}, "$inc": bson.M{"version": 1}})
@@ -213,6 +234,20 @@ func (d *Dao) GetTaskStoreServer(filter bson.M) (*schema.TaskStoreServer, error)
 // ResumeSubAgentTasks applies a batch atomically so a retry cannot strand a
 // partially resumed group of input_required tools.
 func (d *Dao) ResumeSubAgentTasks(conversation bson.ObjectID, inputs []*schema.RemoteTaskStore) error {
+	if conversation.IsZero() || len(inputs) == 0 {
+		return errors.New("conversation and inputs are required")
+	}
+	seen := make(map[[2]string]bool)
+	for _, input := range inputs {
+		if input == nil || input.TaskId == "" || strings.TrimSpace(input.Content) == "" {
+			return errors.New("invalid subagent input")
+		}
+		key := [2]string{input.ContextId, input.TaskId}
+		if seen[key] {
+			return errors.New("duplicate subagent input")
+		}
+		seen[key] = true
+	}
 	session, err := d.StartSession()
 	if err != nil {
 		return err

@@ -6,8 +6,14 @@ import (
 )
 
 type Manager struct {
-	buffer map[string]*TaskItem
+	buffer map[taskKey]*TaskItem
 	heap   TaskHeap
+}
+
+type taskKey struct{ context, task, call, tool string }
+
+func key(item *TaskItem) taskKey {
+	return taskKey{item.ContextId, item.TaskId, item.ToolCallId, item.ToolName}
 }
 
 func (m *Manager) Add(item *TaskItem) {
@@ -15,7 +21,7 @@ func (m *Manager) Add(item *TaskItem) {
 		return
 	}
 
-	if existing, ok := m.buffer[item.TaskId]; ok {
+	if existing, ok := m.buffer[key(item)]; ok {
 		index := existing.index
 		*existing = *item
 		existing.index = index
@@ -24,20 +30,29 @@ func (m *Manager) Add(item *TaskItem) {
 	}
 
 	if m.buffer == nil {
-		m.buffer = make(map[string]*TaskItem)
+		m.buffer = make(map[taskKey]*TaskItem)
 	}
 	owned := *item
 	heap.Push(&m.heap, &owned)
-	m.buffer[owned.TaskId] = &owned
+	m.buffer[key(&owned)] = &owned
 }
 
 func (m *Manager) Delete(taskId string) (*TaskItem, bool) {
-	item, ok := m.buffer[taskId]
-	if !ok {
+	// A bare task ID is only sufficient when it identifies exactly one task.
+	var item *TaskItem
+	for _, candidate := range m.buffer {
+		if candidate.TaskId == taskId {
+			if item != nil {
+				return nil, false
+			}
+			item = candidate
+		}
+	}
+	if item == nil {
 		return nil, false
 	}
 	heap.Remove(&m.heap, item.index)
-	delete(m.buffer, taskId)
+	delete(m.buffer, key(item))
 	return item, true
 }
 
@@ -45,7 +60,7 @@ func (m *Manager) PopExpired(now time.Time) []*TaskItem {
 	var expired []*TaskItem
 	for len(m.heap) > 0 && !m.heap[0].Exp.After(now) {
 		item := heap.Pop(&m.heap).(*TaskItem)
-		delete(m.buffer, item.TaskId)
+		delete(m.buffer, key(item))
 		expired = append(expired, item)
 	}
 	return expired
@@ -60,13 +75,16 @@ func (m *Manager) PeekAll() []*TaskItem {
 		return nil
 	}
 	dst := make([]*TaskItem, len(m.heap))
-	copy(dst, m.heap)
+	for i, item := range m.heap {
+		c := *item
+		dst[i] = &c
+	}
 	return dst
 }
 
 func NewManager() *Manager {
 	return &Manager{
-		buffer: make(map[string]*TaskItem),
+		buffer: make(map[taskKey]*TaskItem),
 		heap:   make(TaskHeap, 0),
 	}
 }

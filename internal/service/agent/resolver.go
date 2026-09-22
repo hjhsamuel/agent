@@ -16,6 +16,13 @@ import (
 )
 
 func (a *Agent) resolveInputRequired(items ...*resolver.InputRequiredItem) error {
+	valid := make([]*resolver.InputRequiredItem, 0, len(items))
+	for _, item := range items {
+		if item != nil {
+			valid = append(valid, item)
+		}
+	}
+	items = valid
 	if len(items) == 0 {
 		return nil
 	}
@@ -32,20 +39,31 @@ func (a *Agent) resolveInputRequired(items ...*resolver.InputRequiredItem) error
 
 	history := append(append([]*provider.Message(nil), a.runtime.OldMessages...), a.runtime.NewMessages...)
 	var (
-		itemMap = make(map[string]*resolver.InputRequiredItem)
+		itemMap  = make(map[string]*resolver.InputRequiredItem)
+		requests []*provider.Message
 	)
 	for _, item := range items {
-		history = append(history, item.Message)
+		if item.Message != nil {
+			requests = append(requests, item.Message)
+		}
 		itemMap[item.ToolCallId] = item
 	}
 
-	content := resolver.BuildMessages(history)
+	// Keep requests separate from history and preserve full tool payloads and
+	// call IDs. Truncation can discard the exact value needed to resume a tool.
+	content, err := json.Marshal(struct {
+		Conversation  []*provider.Message `json:"conversation"`
+		InputRequests []*provider.Message `json:"input_requests"`
+	}{history, requests})
+	if err != nil {
+		return err
+	}
 
 	response, err := a.base.Provider.Chat(
 		a.ctx,
 		prompts.InputRequiredResolverSystemPrompt,
 		[]*provider.Message{
-			{Role: provider.RoleUser, Content: content},
+			{Role: provider.RoleUser, Content: string(content)},
 		},
 		&provider.ChatConfig{
 			Temperature: 0.1,

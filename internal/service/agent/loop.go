@@ -122,6 +122,9 @@ func (a *Agent) runLoop() error {
 				Tool: tools,
 			},
 			func(chunk *provider.StreamChunk, err error) error {
+				if chunk == nil && err == nil {
+					return nil
+				}
 				if err != nil {
 					return a.emit(&notify.ResetEvent{Error: err.Error()})
 				} else {
@@ -145,6 +148,9 @@ func (a *Agent) runLoop() error {
 			// 添加记录
 			toolCalls := make([]*schema.ActiveTool, 0, len(response.ToolCalls))
 			for _, toolCall := range response.ToolCalls {
+				if toolCall == nil || toolCall.ID == "" || toolCall.Name == "" {
+					return errors.New("provider returned an invalid tool call")
+				}
 				toolCalls = append(toolCalls, &schema.ActiveTool{
 					ToolCallId: toolCall.ID,
 					Name:       toolCall.Name,
@@ -211,6 +217,9 @@ func (a *Agent) recoverConversation() error {
 				return err
 			}
 		} else {
+			if remoteTask.Tool == nil {
+				return errors.New("remote task has no tool metadata")
+			}
 			if t, ok := a.toolMap[toolCall.Name].(*subAgentTool); ok {
 				if _, err := t.lookup(a.ctx, remoteTask.ContextId, remoteTask.TaskId); err != nil {
 					return err
@@ -356,10 +365,49 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 	}
 
 	var resolveItems []*resolver.InputRequiredItem
-
+	// External task IDs are not globally unique. Process only the requested
+	// tool/context instances and fail explicitly if persistence lost a task.
+	selected := make([]*schema.RemoteTaskStore, 0, len(objs))
+	matched := make([]bool, len(tasks))
 	for _, obj := range objs {
+		include := false
+		for i, task := range tasks {
+			if obj.TaskId != task.TaskId || (task.ContextId != "" && obj.ContextId != task.ContextId) {
+				continue
+			}
+			if obj.Tool != nil && ((task.ToolCallId != "" && obj.Tool.ToolCallId != task.ToolCallId) || (task.ToolName != "" && obj.Tool.Name != task.ToolName)) {
+				continue
+			}
+			matched[i], include = true, true
+		}
+		if include {
+			selected = append(selected, obj)
+		}
+	}
+	for i, found := range matched {
+		if !found {
+			return fmt.Errorf("pending task %q was not found", tasks[i].TaskId)
+		}
+	}
+
+	for _, obj := range selected {
 		if obj.Tool == nil {
 			return errors.New("remote task has no tool metadata")
+		}
+		// A child can fail while its parent is waiting for user input. Keep
+		// observing its terminal state instead of waiting indefinitely.
+		if local, ok := a.toolMap[obj.Tool.Name].(*subAgentTool); ok &&
+			(obj.Status == schema.RemoteTaskWaitingInput || obj.Status == schema.RemoteTaskInputted) {
+			result, err := local.Check(a.ctx, a.base.User.Token, obj.ContextId, obj.TaskId)
+			if err != nil {
+				return err
+			}
+			if terminalTask(result.Status) {
+				if err := a.toolFinished(obj.TaskId, obj.Tool.ToolCallId, result.Content); err != nil {
+					return err
+				}
+				continue
+			}
 		}
 		switch obj.Status {
 		case schema.RemoteTaskSubmitted:
@@ -400,7 +448,10 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 				if function != nil {
 					inputSchema = function.Parameters
 				}
-				builtMessage, _ := resolver.BuildInputRequiredMessage(obj.Tool.ToolCallId, result.Content, inputSchema)
+				builtMessage, err := resolver.BuildInputRequiredMessage(obj.Tool.ToolCallId, result.Content, inputSchema)
+				if err != nil {
+					return err
+				}
 				resolveItems = append(resolveItems, &resolver.InputRequiredItem{
 					ContextId:  obj.ContextId,
 					TaskId:     obj.TaskId,
@@ -413,6 +464,8 @@ func (a *Agent) toolCheck(tasks ...*taskheap.TaskItem) error {
 				if err != nil {
 					return err
 				}
+			default:
+				return fmt.Errorf("unknown tool task status %q", result.Status)
 			}
 		case schema.RemoteTaskWaitingInput:
 			a.taskRequeue(&taskheap.TaskItem{
@@ -452,6 +505,12 @@ func (a *Agent) toolResume(contextId, taskId, toolName, toolCallId, content stri
 	defer cancel()
 	result, err := t.Resume(resumeCtx, a.base.User.Token, contextId, taskId, content)
 	if err != nil {
+		if a.ctx.Err() != nil {
+			return a.ctx.Err()
+		}
+		if _, local := t.(*subAgentTool); local {
+			return err
+		}
 		a.taskRequeue(&taskheap.TaskItem{
 			ContextId:  contextId,
 			TaskId:     taskId,

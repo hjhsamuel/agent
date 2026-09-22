@@ -9,7 +9,9 @@ import (
 
 func TestBuildMessagesPreservesCallIDsWithOutOfOrderResults(t *testing.T) {
 	content := BuildMessages([]*provider.Message{
+		nil,
 		{Role: provider.RoleAssistant, ToolCalls: []*provider.ToolCall{
+			nil,
 			{ID: "call-a", Name: "lookup", Arguments: `{"order":42}`},
 			{ID: "call-b", Name: "lookup", Arguments: `{"order":43}`},
 		}},

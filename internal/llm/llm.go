@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/hjhsamuel/agent/internal/db/schema"
@@ -33,7 +34,13 @@ func (l *LLM) Chat(
 	retry := backoff.NewBackoff(time.Second*3, time.Minute, 0.2)
 	for attempt := 0; attempt < 3; attempt++ {
 		response, err = l.provider.Chat(ctx, l.Model, prompt, messages, conf)
+		if err == nil && response == nil {
+			return nil, errors.New("provider returned no response")
+		}
 		if err != nil {
+			if attempt == 2 {
+				return nil, err
+			}
 			wErr := backoff.Wait(ctx, retry.Delay(attempt))
 			if wErr != nil {
 				return nil, wErr
@@ -59,9 +66,15 @@ func (l *LLM) Stream(
 	retry := backoff.NewBackoff(time.Second*3, time.Minute, 0.2)
 	for attempt := 0; attempt < 3; attempt++ {
 		response, err = l.provider.Stream(ctx, l.Model, prompt, messages, conf, yield)
+		if err == nil && response == nil {
+			return nil, errors.New("provider returned no response")
+		}
 		if err != nil {
 			if yieldErr := yield(nil, err); yieldErr != nil {
 				return nil, yieldErr
+			}
+			if attempt == 2 {
+				return nil, err
 			}
 			wErr := backoff.Wait(ctx, retry.Delay(attempt))
 			if wErr != nil {

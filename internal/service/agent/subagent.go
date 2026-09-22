@@ -91,7 +91,11 @@ func (a *Agent) childLocked(id bson.ObjectID) (*Agent, error) {
 		runtime: &Runtime{tasks: taskheap.NewManager()},
 	}
 	if err := child.Execute(""); err != nil {
-		finishErr := a.base.Store.FinishSubAgentTask(a.id, id, tool.TaskFailed, err.Error())
+		status := tool.TaskFailed
+		if a.ctx.Err() != nil {
+			status = tool.TaskCanceled
+		}
+		finishErr := a.finishChildTask(a.id, id, status, err.Error())
 		return nil, errors.Join(err, finishErr)
 	}
 	m.children[id] = child
@@ -139,19 +143,24 @@ func (a *Agent) Execute(content string) error {
 		} else if n := len(a.runtime.OldMessages); n != 0 {
 			result = a.runtime.OldMessages[n-1].Content
 		}
-		// Terminal writes must still work after the parent is canceled.
-		store := a.base.Store
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(a.ctx), 5*time.Second)
-		defer cancel()
-		if dao, ok := store.(*db.Dao); ok {
-			store = dao.WithContext(ctx)
-		}
-		err := store.FinishSubAgentTask(a.parent, a.id, status, result)
+		err := a.finishChildTask(a.parent, a.id, status, result)
 		a.sub.mu.Lock()
 		a.sub.finishErr = err
 		a.sub.mu.Unlock()
 	}()
 	return nil
+}
+
+// Cleanup also covers cancellation between the creation transaction and
+// runner admission. It must not use the canceled main-agent database context.
+func (a *Agent) finishChildTask(parent, id bson.ObjectID, status tool.TaskStatus, content string) error {
+	store := a.base.Store
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(a.ctx), 5*time.Second)
+	defer cancel()
+	if dao, ok := store.(*db.Dao); ok {
+		store = dao.WithContext(ctx)
+	}
+	return store.FinishSubAgentTask(parent, id, status, content)
 }
 
 type subAgentInput struct {
@@ -183,7 +192,13 @@ func (a *Agent) Resume(content string) error {
 	var params struct {
 		Inputs []subAgentInput `json:"inputs"`
 	}
-	if json.Unmarshal([]byte(content), &params) != nil || len(params.Inputs) == 0 {
+	var envelope map[string]json.RawMessage
+	_ = json.Unmarshal([]byte(content), &envelope)
+	if _, structured := envelope["inputs"]; structured {
+		if err := json.Unmarshal([]byte(content), &params); err != nil || len(params.Inputs) == 0 {
+			return errors.New("inputs must be a non-empty array of context_id, task_id and content")
+		}
+	} else {
 		if len(waiting) != 1 {
 			return errors.New("provide inputs with context_id, task_id and content for each waiting task")
 		}

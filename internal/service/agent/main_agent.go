@@ -18,6 +18,17 @@ func (a *Agent) Start(content string) error {
 	if !a.parent.IsZero() {
 		return errors.New("is not main agent")
 	}
+	m := a.runtime.main
+	m.mu.Lock()
+	if m.started || m.closed {
+		m.mu.Unlock()
+		return errors.New("main agent has already been started or closed")
+	}
+	m.started = true
+	m.mu.Unlock()
+	if err := a.ctx.Err(); err != nil {
+		return err
+	}
 
 	if content != "" {
 		// 新对话

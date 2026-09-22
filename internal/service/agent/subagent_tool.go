@@ -93,6 +93,9 @@ func (t *subAgentTool) Execute(ctx context.Context, token, content string) (*too
 		return nil, err
 	}
 	if _, err := t.owner.childLocked(id); err != nil {
+		if t.owner.ctx.Err() != nil {
+			return nil, errors.Join(err, t.owner.finishChildTask(t.owner.id, id, tool.TaskCanceled, t.owner.ctx.Err().Error()))
+		}
 		return nil, err
 	}
 	return &tool.ToolResult{ContextId: id.Hex(), TaskId: id.Hex(), Status: tool.TaskSubmitted}, nil

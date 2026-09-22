@@ -78,6 +78,9 @@ func TestSubAgentTaskTransactions(t *testing.T) {
 	if err := d.FinishSubAgentTask(parent, id, tool.TaskCompleted, "result"); err != nil {
 		t.Fatal(err)
 	}
+	if err := d.FinishSubAgentTask(parent, id, tool.TaskFailed, "late cleanup"); err != nil {
+		t.Fatal(err)
+	}
 	state, err = d.GetTaskStoreServer(bson.M{"parent": parent, "task_id": id.Hex()})
 	if err != nil || state.Status != tool.TaskCompleted || len(state.Artifacts) != 1 || state.Artifacts[0] != "result" {
 		t.Fatalf("result not committed: %+v, %v", state, err)

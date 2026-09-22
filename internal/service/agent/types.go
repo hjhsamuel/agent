@@ -39,6 +39,7 @@ type MainRuntime struct {
 	mu       sync.Mutex
 	children map[bson.ObjectID]*Agent
 	closed   bool
+	started  bool
 }
 
 type BaseConfig struct {
