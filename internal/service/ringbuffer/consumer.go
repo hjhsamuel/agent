@@ -6,11 +6,14 @@ import "context"
 // extend it. During a wait exceeding one minute, call Renew separately.
 // Close immediately permits a replacement consumer. Do not copy it.
 type RingBufferConsumer struct {
-	manager *RingBufferManager
-	lease   ringBufferLease
+	manager      *RingBufferManager
+	lease        ringBufferLease
+	sequence     uint64 // Cursor fields are protected by lease.reading.
+	reconnecting bool
 }
 
-// Next waits for the oldest retained chunk, cancellation or lease termination.
+// Next waits for the next chunk at this consumer's position, cancellation or
+// lease termination. The first read applies AcquireConsumer's reconnect policy.
 // Only one Next may be pending per consumer. Canceling ctx ends this read without
 // closing the lease. Reads racing with Close may deliver an already claimed chunk.
 func (c *RingBufferConsumer) Next(ctx context.Context) (SSEChunk, error) {
@@ -32,7 +35,15 @@ func (c *RingBufferConsumer) Next(ctx context.Context) (SSEChunk, error) {
 		if err := ctx.Err(); err != nil {
 			return SSEChunk{}, err
 		}
-		if chunk, ok := lease.buffer.pop(); ok {
+		after := c.sequence
+		if c.reconnecting {
+			// Producers can overwrite the client's sequence after acquisition
+			// or while Next waits, so resolve until the first successful read.
+			after = lease.buffer.resumeSequence(after)
+		}
+		if chunk, ok := lease.buffer.next(after); ok {
+			c.sequence = chunk.Sequence
+			c.reconnecting = false
 			return chunk, nil
 		}
 		select {

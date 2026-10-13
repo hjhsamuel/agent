@@ -32,8 +32,9 @@ var (
 	ErrRingBufferReadBusy      = errors.New("consumer already has a pending read")
 )
 
-// SSEChunk holds opaque SSE bytes. Sequence starts at 1 per buffer. The reader
-// owns Data. Overwriting old chunks can create gaps in delivered sequences.
+// SSEChunk holds opaque SSE bytes. Sequence starts at 1 per buffer. Each read
+// owns a copy of Data, leaving retained chunks immutable for reconnection.
+// Overwriting old chunks can create gaps in delivered sequences.
 type SSEChunk struct {
 	Sequence uint64
 	Data     []byte

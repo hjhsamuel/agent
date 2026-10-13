@@ -41,53 +41,46 @@ func NewRingBufferManager() *RingBufferManager {
 
 func (m *RingBufferManager) now() int64 { return int64(time.Since(m.start)) }
 
-// AcquireProducer stays connected until Close, including during arbitrarily
-// long Push pauses. Call Close when production ends, or use the context variant
-// to bind the lease to a connection's lifetime.
-func (m *RingBufferManager) AcquireProducer(id string) (*RingBufferProducer, error) {
-	return m.acquireProducer(nil, id)
-}
-
-// AcquireProducerContext renews while ctx is live and releases on cancellation.
-// It creates no per-producer timer or standing goroutine. ctx must be non-nil
-// and should describe the connection lifetime.
-func (m *RingBufferManager) AcquireProducerContext(ctx context.Context, id string) (*RingBufferProducer, error) {
+// AcquireProducer stays connected until Close or ctx cancellation, including
+// during arbitrarily long Push pauses. It creates no per-producer timer or
+// standing goroutine. ctx must be non-nil; use context.Background for an
+// explicitly closed producer.
+func (m *RingBufferManager) AcquireProducer(ctx context.Context, id string) (*RingBufferProducer, error) {
 	if ctx == nil {
 		return nil, ErrRingBufferInvalidLease
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return m.acquireProducer(ctx, id)
-}
-
-func (m *RingBufferManager) acquireProducer(ctx context.Context, id string) (*RingBufferProducer, error) {
 	p := &RingBufferProducer{manager: m}
 	p.lease.ctx = ctx
 	if err := m.acquire(id, &p.lease, ringBufferProducerLease); err != nil {
 		return nil, err
 	}
-	if ctx != nil {
-		stop := context.AfterFunc(ctx, func() { _ = p.Close() })
-		s := p.lease.buffer.shard
-		s.mu.Lock()
-		if ringBufferLeaseError(p.lease.state.Load()) == nil {
-			p.lease.stopCancel = stop
-		} else {
-			stop()
-		}
-		s.mu.Unlock()
+	stop := context.AfterFunc(ctx, func() { _ = p.Close() })
+	s := p.lease.buffer.shard
+	s.mu.Lock()
+	if ringBufferLeaseError(p.lease.state.Load()) == nil {
+		p.lease.stopCancel = stop
+	} else {
+		stop()
 	}
+	s.mu.Unlock()
 	return p, nil
 }
 
-// AcquireConsumer grants the exclusive one-minute consumer lease. Next and
-// Renew extend it. A closed or expired consumer can be replaced.
-func (m *RingBufferManager) AcquireConsumer(id string) (*RingBufferConsumer, error) {
+// AcquireConsumer grants the exclusive one-minute consumer lease, rejecting an
+// existing active consumer with ErrRingBufferConsumerBusy. Next and Renew extend
+// it. Close the old consumer before reconnecting with the last sequence received
+// by the client. A retained sequence resumes at the following chunk; a missing
+// sequence resumes at the newest chunk. Zero starts at the oldest retained chunk.
+// A closed or expired consumer can be replaced while the buffer is retained.
+func (m *RingBufferManager) AcquireConsumer(id string, lastSequence uint64) (*RingBufferConsumer, error) {
 	c := &RingBufferConsumer{manager: m}
 	if err := m.acquire(id, &c.lease, ringBufferConsumerLease); err != nil {
 		return nil, err
 	}
+	c.sequence, c.reconnecting = lastSequence, lastSequence != 0
 	return c, nil
 }
 

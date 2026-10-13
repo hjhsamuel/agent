@@ -1,9 +1,12 @@
 package ringbuffer
 
-import "sync/atomic"
+import (
+	"bytes"
+	"sync/atomic"
+)
 
 // RingBuffer is a bounded FIFO. Writers publish immutable chunks with CAS;
-// readers claim sequence numbers with CAS. Full buffers overwrite old chunks.
+// consumers keep independent read positions. Full buffers overwrite old chunks.
 // Storage is allocated in small segments as slots are first used.
 // RingBuffer must not be copied.
 type RingBuffer struct {
@@ -12,7 +15,6 @@ type RingBuffer struct {
 	storage     atomic.Pointer[ringBufferStorage]
 	retired     atomic.Bool
 	written     atomic.Uint64
-	read        atomic.Uint64
 	consumer    atomic.Pointer[ringBufferLease]
 	retainUntil atomic.Int64
 	producers   int // Lifecycle fields are protected by the shard lock.
@@ -79,9 +81,9 @@ func (b *RingBuffer) publish(storage *ringBufferStorage, chunk *SSEChunk) {
 	sequence := chunk.Sequence
 	slot := storage.slot(sequence, true)
 	for {
-		// A delayed writer must not replace a newer chunk, or republish one
-		// already consumed/dropped while it was waiting to run.
-		if sequence <= b.read.Load() || b.written.Load()-sequence >= storage.capacity {
+		// A delayed writer must not replace a newer chunk or publish a chunk
+		// that is already outside the retained window.
+		if b.written.Load()-sequence >= storage.capacity {
 			return
 		}
 		old := slot.Load()
@@ -89,7 +91,7 @@ func (b *RingBuffer) publish(storage *ringBufferStorage, chunk *SSEChunk) {
 			return
 		}
 		if slot.CompareAndSwap(old, chunk) {
-			if sequence <= b.read.Load() || b.written.Load()-sequence >= storage.capacity {
+			if b.written.Load()-sequence >= storage.capacity {
 				slot.CompareAndSwap(chunk, nil)
 			}
 			return
@@ -97,19 +99,40 @@ func (b *RingBuffer) publish(storage *ringBufferStorage, chunk *SSEChunk) {
 	}
 }
 
-func (b *RingBuffer) pop() (SSEChunk, bool) {
+// resumeSequence returns the position preceding the next chunk to deliver.
+// Zero starts at the oldest retained chunk. A missing nonzero sequence resumes
+// at the newest chunk instead; a retained sequence resumes immediately after it.
+func (b *RingBuffer) resumeSequence(sequence uint64) uint64 {
+	if sequence == 0 {
+		return 0
+	}
+	written := b.written.Load()
+	if storage := b.storage.Load(); storage != nil && sequence <= written && written-sequence < storage.capacity {
+		if slot := storage.slot(sequence, false); slot != nil {
+			if chunk := slot.Load(); chunk != nil && chunk.Sequence == sequence {
+				return sequence
+			}
+		}
+	}
+	if written > 0 {
+		return written - 1
+	}
+	return 0
+}
+
+// next reads without removing the chunk so clients can replay retained data.
+func (b *RingBuffer) next(after uint64) (SSEChunk, bool) {
 	storage := b.storage.Load()
 	if storage == nil {
 		return SSEChunk{}, false
 	}
 	for {
-		read, written := b.read.Load(), b.written.Load()
+		read, written := after, b.written.Load()
 		if read >= written {
 			return SSEChunk{}, false
 		}
 		if written-read > storage.capacity {
-			b.read.CompareAndSwap(read, written-storage.capacity)
-			continue
+			read = written - storage.capacity
 		}
 		sequence := read + 1
 		slot := storage.slot(sequence, false)
@@ -125,10 +148,7 @@ func (b *RingBuffer) pop() (SSEChunk, bool) {
 			}
 			return SSEChunk{}, false
 		}
-		if b.read.CompareAndSwap(read, sequence) {
-			slot.CompareAndSwap(chunk, nil) // Do not clear a newer writer's chunk.
-			return *chunk, true
-		}
+		return SSEChunk{Sequence: chunk.Sequence, Data: bytes.Clone(chunk.Data)}, true
 	}
 }
 
