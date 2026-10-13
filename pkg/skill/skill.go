@@ -3,86 +3,78 @@ package skill
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	SkillDir      = "skills"
-	SkillFileName = "SKILLS.md"
+var (
+	frontmatterSeparator    = []byte("---\n")
+	frontmatterSeparatorWin = []byte("---\r\n")
 )
 
-type Skill struct {
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
-}
+func ReadSkill(name string, withContent bool) (*Frontmatter, string, error) {
+	path := filepath.Join("skills", name, "SKILL.md")
 
-func LoadSkills() ([]*Skill, error) {
-	entries, err := os.ReadDir(SkillDir)
+	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("read skills directory: %w", err)
+		return nil, "", err
 	}
-	skills := make([]*Skill, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		s, err := loadSkill(filepath.Join("skills", entry.Name(), SkillFileName))
+	defer f.Close()
+
+	reader := bufio.NewReader(f)
+	frontmatter, err := ParseFrontmatter(reader)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if withContent {
+		content, err := io.ReadAll(reader)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		skills = append(skills, s)
+		return frontmatter, string(content), nil
 	}
-	return skills, nil
+
+	return frontmatter, "", nil
 }
 
-// loadSkill reads only the YAML frontmatter from a SKILLS.md file.
-func loadSkill(path string) (*Skill, error) {
-	file, err := os.Open(path)
+func ParseFrontmatter(r *bufio.Reader) (*Frontmatter, error) {
+	line, err := r.ReadBytes('\n')
 	if err != nil {
-		return nil, fmt.Errorf("open skill %q: %w", path, err)
+		return nil, fmt.Errorf("reading first line: %w", err)
 	}
-	defer file.Close()
 
-	// Accept a UTF-8 BOM and both LF and CRLF line endings.
-	scanner := bufio.NewScanner(file)
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return nil, fmt.Errorf("read skill frontmatter %q: %w", path, err)
+	if !bytes.Equal(line, frontmatterSeparator) && !bytes.Equal(line, frontmatterSeparatorWin) {
+		return nil, errors.New("invalid frontmatter separator")
+	}
+
+	yamlBytes := bytes.Buffer{}
+	for {
+		yamlLine, err := r.ReadBytes('\n')
+		if errors.Is(err, io.EOF) {
+			return nil, errors.New("missing closing frontmatter separator")
 		}
-		return nil, fmt.Errorf("skill %q: missing opening YAML frontmatter delimiter", path)
-	}
-	if strings.TrimRight(strings.TrimPrefix(scanner.Text(), "\ufeff"), " \t") != "---" {
-		return nil, fmt.Errorf("skill %q: missing opening YAML frontmatter delimiter", path)
-	}
+		if err != nil {
+			return nil, fmt.Errorf("read a line of frontmatter: %w", err)
+		}
 
-	var frontmatter bytes.Buffer
-	closed := false
-	for scanner.Scan() {
-		if strings.TrimRight(scanner.Text(), " \t") == "---" {
-			closed = true
+		if bytes.Equal(yamlLine, frontmatterSeparator) || bytes.Equal(yamlLine, frontmatterSeparatorWin) {
 			break
 		}
-		frontmatter.WriteString(scanner.Text())
-		frontmatter.WriteByte('\n')
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read skill frontmatter %q: %w", path, err)
-	}
-	if !closed {
-		return nil, fmt.Errorf("skill %q: missing closing YAML frontmatter delimiter", path)
+		yamlBytes.Write(yamlLine)
 	}
 
-	var result Skill
-	if err := yaml.Unmarshal(frontmatter.Bytes(), &result); err != nil {
-		return nil, fmt.Errorf("parse skill frontmatter %q: %w", path, err)
+	var fmYaml Frontmatter
+	decoder := yaml.NewDecoder(bytes.NewReader(yamlBytes.Bytes()))
+	decoder.KnownFields(true)
+	if err = decoder.Decode(&fmYaml); err != nil {
+		return nil, fmt.Errorf("parse frontmatter: %w", err)
 	}
-	if strings.TrimSpace(result.Name) == "" || strings.TrimSpace(result.Description) == "" {
-		return nil, fmt.Errorf("skill %q: name and description must not be empty", path)
-	}
-	return &result, nil
+
+	return &fmYaml, nil
 }
