@@ -4,34 +4,34 @@ import (
 	"context"
 
 	"github.com/hjhsamuel/agent/internal/store/schema"
-	"github.com/hjhsamuel/agent/pkg/llm/openaix"
 	"google.golang.org/adk/v2/model"
+	"google.golang.org/adk/v2/model/openaimodel"
 )
 
-func (s *Service) randomModel(kind schema.ModelKind) (model.LLM, error) {
+func (s *Service) randomModel(kind schema.ModelKind) (*schema.Model, model.LLM, error) {
 	rsp, err := s.store.RandomModel(context.Background(), kind)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	apiKey := rsp.ApiKeys[0]
 	key, err := s.kms.Decrypt(apiKey.Version, apiKey.Ciphertext, apiKey.Nonce)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	llmModel, err := openaix.NewModel(
+	llmModel, err := openaimodel.NewModel(
 		context.Background(),
 		rsp.Name,
-		&openaix.Config{
-			ApiKey: key,
-			Url:    rsp.Url,
-			API:    openaix.APIChatCompletions,
+		&openaimodel.ClientConfig{
+			APIKey:  key,
+			BaseURL: rsp.Url,
+			API:     openaimodel.APIChatCompletions,
 		},
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return llmModel, nil
+	return rsp, llmModel, nil
 }

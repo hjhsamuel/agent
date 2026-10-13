@@ -11,7 +11,6 @@ const SessionCollection = "session"
 
 type Session struct {
 	ID         bson.ObjectID `bson:"_id,omitempty"`
-	SessionID  string        `bson:"session_id"`
 	User       string        `bson:"user"`
 	Name       string        `bson:"name"`
 	State      SessionStatus `bson:"state"`
