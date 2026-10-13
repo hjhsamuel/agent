@@ -2,13 +2,10 @@ package store
 
 import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
-	"sync"
 )
 
 type Store struct {
-	db                  string
-	sessionIndexesMu    sync.Mutex
-	sessionIndexesReady bool
+	db string
 
 	*mongo.Client
 }
