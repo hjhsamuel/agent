@@ -3,32 +3,35 @@ package ringbuffer
 import (
 	"bytes"
 	"container/heap"
+	"context"
 	"hash/maphash"
 	"sync/atomic"
 	"time"
 )
 
-// RingBufferManager must be constructed with NewRingBufferManager and must not
-// be copied. It uses sharded locks and expiry heaps, with one reaper goroutine
-// regardless of buffer count. Close stops the reaper and releases stored chunks.
-// After the last Close, a buffer retains its backlog for one minute. Abandoned
-// leases expire one minute after their last renewal. Cleanup runs every second.
+// RingBufferManager uses one maintenance goroutine. Push, Next and Renew do not
+// acquire mutexes or adjust expiry heaps. Shard locks protect registration,
+// release and reclamation. Construct it with NewRingBufferManager; do not copy.
+// Connected producers pin their buffers. The last explicit Close starts a
+// one-minute retention lease; abandoned consumers expire after one minute
+// without renewal. Cleanup checks deadlines once per second.
 type RingBufferManager struct {
 	capacity int
 	seed     maphash.Seed
+	start    time.Time
 	shards   [ringBufferShardCount]ringBufferShard
 	closed   atomic.Bool
 	stop     chan struct{}
 	done     chan struct{}
 }
 
-// NewRingBufferManager sets the maximum number of retained chunks per buffer.
-// A non-positive capacity uses DefaultRingBufferCapacity. Payloads are copied
-// on Push, so retained byte usage also depends on the size of incoming chunks.
+// NewRingBufferManager retains at most DefaultRingBufferCapacity chunks per
+// buffer. Storage grows by segment; payload sizes determine retained byte use.
 func NewRingBufferManager() *RingBufferManager {
 	m := &RingBufferManager{
 		capacity: DefaultRingBufferCapacity,
 		seed:     maphash.MakeSeed(),
+		start:    time.Now(),
 		stop:     make(chan struct{}),
 		done:     make(chan struct{}),
 	}
@@ -36,17 +39,50 @@ func NewRingBufferManager() *RingBufferManager {
 	return m
 }
 
-// AcquireProducer creates the buffer if necessary and acquires a producer lease.
+func (m *RingBufferManager) now() int64 { return int64(time.Since(m.start)) }
+
+// AcquireProducer stays connected until Close, including during arbitrarily
+// long Push pauses. Call Close when production ends, or use the context variant
+// to bind the lease to a connection's lifetime.
 func (m *RingBufferManager) AcquireProducer(id string) (*RingBufferProducer, error) {
+	return m.acquireProducer(nil, id)
+}
+
+// AcquireProducerContext renews while ctx is live and releases on cancellation.
+// It creates no per-producer timer or standing goroutine. ctx must be non-nil
+// and should describe the connection lifetime.
+func (m *RingBufferManager) AcquireProducerContext(ctx context.Context, id string) (*RingBufferProducer, error) {
+	if ctx == nil {
+		return nil, ErrRingBufferInvalidLease
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return m.acquireProducer(ctx, id)
+}
+
+func (m *RingBufferManager) acquireProducer(ctx context.Context, id string) (*RingBufferProducer, error) {
 	p := &RingBufferProducer{manager: m}
+	p.lease.ctx = ctx
 	if err := m.acquire(id, &p.lease, ringBufferProducerLease); err != nil {
 		return nil, err
+	}
+	if ctx != nil {
+		stop := context.AfterFunc(ctx, func() { _ = p.Close() })
+		s := p.lease.buffer.shard
+		s.mu.Lock()
+		if ringBufferLeaseError(p.lease.state.Load()) == nil {
+			p.lease.stopCancel = stop
+		} else {
+			stop()
+		}
+		s.mu.Unlock()
 	}
 	return p, nil
 }
 
-// AcquireConsumer creates the buffer if necessary. An unexpired consumer lease
-// prevents another acquisition, even when that consumer is not currently reading.
+// AcquireConsumer grants the exclusive one-minute consumer lease. Next and
+// Renew extend it. A closed or expired consumer can be replaced.
 func (m *RingBufferManager) AcquireConsumer(id string) (*RingBufferConsumer, error) {
 	c := &RingBufferConsumer{manager: m}
 	if err := m.acquire(id, &c.lease, ringBufferConsumerLease); err != nil {
@@ -62,38 +98,38 @@ func (m *RingBufferManager) acquire(id string, lease *ringBufferLease, kind ring
 	if m.closed.Load() {
 		return ErrRingBufferManagerClosed
 	}
-	now := time.Now()
+	now := m.now()
 	b := s.buffers[id]
 	if b != nil {
-		// Check this buffer's idle/consumer deadline directly, without making
-		// acquisitions scan the shard's backlog of unrelated expired leases.
-		if b.consumer != nil && !now.Before(b.consumer.deadline) {
-			s.expire(b.consumer)
+		if consumer := b.consumer.Load(); consumer != nil {
+			s.expire(consumer, now)
 		}
-		if b.idle.index >= 0 && !now.Before(b.idle.deadline) {
-			s.expire(&b.idle)
+		if b.idle.index >= 0 && b.idle.deadline <= now {
+			s.expire(&b.idle, now)
 		}
 		b = s.buffers[id]
 	}
 	if b == nil {
 		b = &RingBuffer{shard: s, id: id}
-		b.idle = ringBufferLease{buffer: b, kind: ringBufferIdleLease, index: -1}
+		b.idle.buffer, b.idle.kind, b.idle.index = b, ringBufferIdleLease, -1
 		if s.buffers == nil {
 			s.buffers = make(map[string]*RingBuffer)
 		}
 		s.buffers[id] = b
 	}
-	if kind == ringBufferConsumerLease && b.consumer != nil {
+	if kind == ringBufferConsumerLease && b.consumer.Load() != nil {
 		return ErrRingBufferConsumerBusy
 	}
 	if b.idle.index >= 0 {
 		heap.Remove(&s.expires, b.idle.index)
 	}
-	*lease = ringBufferLease{buffer: b, kind: kind, deadline: now.Add(RingBufferLeaseTTL), index: -1}
-	b.idle.deadline = lease.deadline
+	lease.buffer, lease.kind = b, kind
+	lease.deadline, lease.index = now+int64(RingBufferLeaseTTL), -1
+	lease.state.Store(uint64(lease.deadline))
+	ringBufferExtend(&b.retainUntil, lease.deadline)
 	if kind == ringBufferConsumerLease {
-		lease.wake = make(chan struct{}, 1)
-		b.consumer = lease
+		lease.wake, lease.done = make(chan struct{}, 1), make(chan struct{})
+		b.consumer.Store(lease)
 	} else {
 		b.producers++
 	}
@@ -101,67 +137,76 @@ func (m *RingBufferManager) acquire(id string, lease *ringBufferLease, kind ring
 	return nil
 }
 
-// Push copies data into the producer's buffer and renews its lease. It never
-// waits for a consumer; on overflow it overwrites the oldest chunk.
+// Push copies data and publishes without locking. Multiple producers may push
+// concurrently; stalled writers cannot replace newer sequences. Overflow
+// directly overwrites old chunks and never waits for the consumer.
 func (m *RingBufferManager) Push(producer *RingBufferProducer, data []byte) (uint64, error) {
 	if producer == nil || producer.manager != m || producer.lease.buffer == nil {
 		return 0, ErrRingBufferInvalidLease
 	}
-	// Copy outside the shard lock so large SSE payloads do not hold it up.
-	data = bytes.Clone(data)
 	lease := &producer.lease
-	s := lease.buffer.shard
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := time.Now()
-	if err := m.checkLease(lease, now); err != nil {
+	if err := m.checkLease(lease); err != nil {
 		return 0, err
 	}
-	m.renewLocked(lease, now)
-	b := lease.buffer
-	b.push(data, m.capacity)
-	if b.consumer != nil {
+	sequence, ok := lease.buffer.push(bytes.Clone(data), m.capacity)
+	if !ok {
+		if err := m.checkLease(lease); err != nil {
+			return 0, err
+		}
+		return 0, ErrRingBufferLeaseClosed
+	}
+	if consumer := lease.buffer.consumer.Load(); consumer != nil {
 		select {
-		case b.consumer.wake <- struct{}{}:
+		case consumer.wake <- struct{}{}:
 		default:
 		}
 	}
-	return b.sequence, nil
+	return sequence, nil
+}
+
+func (m *RingBufferManager) checkLease(lease *ringBufferLease) error {
+	if m.closed.Load() {
+		return ErrRingBufferManagerClosed
+	}
+	state := lease.state.Load()
+	if err := ringBufferLeaseError(state); err != nil {
+		return err
+	}
+	if lease.kind == ringBufferProducerLease {
+		if lease.ctx != nil && lease.ctx.Err() != nil {
+			return ErrRingBufferLeaseClosed
+		}
+	} else if int64(state) <= m.now() {
+		return ErrRingBufferLeaseExpired
+	}
+	return nil
 }
 
 func (m *RingBufferManager) renew(lease *ringBufferLease) error {
 	if m == nil || lease.buffer == nil {
 		return ErrRingBufferInvalidLease
 	}
-	s := lease.buffer.shard
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := time.Now()
-	if err := m.checkLease(lease, now); err != nil {
-		return err
+	for {
+		if m.closed.Load() {
+			return ErrRingBufferManagerClosed
+		}
+		state := lease.state.Load()
+		if err := ringBufferLeaseError(state); err != nil {
+			return err
+		}
+		if lease.ctx != nil && lease.ctx.Err() != nil {
+			return ErrRingBufferLeaseClosed
+		}
+		now := m.now()
+		if lease.kind == ringBufferConsumerLease && int64(state) <= now {
+			return ErrRingBufferLeaseExpired
+		}
+		deadline := max(state, uint64(now+int64(RingBufferLeaseTTL)))
+		if lease.state.CompareAndSwap(state, deadline) {
+			ringBufferExtend(&lease.buffer.retainUntil, int64(deadline))
+			return nil
+		}
 	}
-	m.renewLocked(lease, now)
-	return nil
-}
-
-func (m *RingBufferManager) renewLocked(lease *ringBufferLease, now time.Time) {
-	lease.deadline = now.Add(RingBufferLeaseTTL)
-	lease.buffer.idle.deadline = lease.deadline
-	heap.Fix(&lease.buffer.shard.expires, lease.index)
-}
-
-func (m *RingBufferManager) checkLease(lease *ringBufferLease, now time.Time) error {
-	if m.closed.Load() {
-		return ErrRingBufferManagerClosed
-	}
-	if lease.err != nil {
-		return lease.err
-	}
-	if !now.Before(lease.deadline) {
-		lease.buffer.shard.expire(lease)
-		return ErrRingBufferLeaseExpired
-	}
-	return nil
 }
 
 func (m *RingBufferManager) release(lease *ringBufferLease) error {
@@ -171,15 +216,13 @@ func (m *RingBufferManager) release(lease *ringBufferLease) error {
 	s := lease.buffer.shard
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if m.closed.Load() || lease.err != nil {
+	if m.closed.Load() || ringBufferLeaseError(lease.state.Load()) != nil {
 		return nil
 	}
-	now := time.Now()
-	if !now.Before(lease.deadline) {
-		s.expire(lease)
-	} else {
-		s.endLease(lease, ErrRingBufferLeaseClosed, now.Add(RingBufferLeaseTTL))
-	}
+	now := m.now()
+	// Explicit Close always wins against a concurrent renewal.
+	lease.state.Store(ringBufferLeaseClosed)
+	s.endLease(lease, now+int64(RingBufferLeaseTTL))
 	return nil
 }
 
@@ -192,9 +235,8 @@ func (m *RingBufferManager) reap() {
 		select {
 		case <-m.stop:
 			return
-		case now := <-ticker.C:
-			// Work in bounded batches, releasing locks between batches. Only
-			// expired heap entries are visited; active buffers are never scanned.
+		case <-ticker.C:
+			now := m.now()
 			for pending := true; pending; {
 				pending = false
 				for i := range m.shards {
@@ -218,21 +260,27 @@ func (m *RingBufferManager) clear() {
 		s := &m.shards[i]
 		s.mu.Lock()
 		for _, lease := range s.expires {
-			lease.index, lease.err = -1, ErrRingBufferManagerClosed
-			if lease.kind == ringBufferConsumerLease {
-				close(lease.wake)
+			lease.index = -1
+			lease.state.Store(ringBufferManagerClosed)
+			if lease.stopCancel != nil {
+				lease.stopCancel()
+				lease.stopCancel = nil
+			}
+			if lease.done != nil {
+				close(lease.done)
 			}
 		}
 		for _, b := range s.buffers {
-			b.chunks, b.consumer = nil, nil
-			b.head, b.size, b.producers = 0, 0, 0
+			b.clear()
+			b.consumer.Store(nil)
+			b.producers = 0
 		}
 		s.buffers, s.expires = nil, nil
 		s.mu.Unlock()
 	}
 }
 
-// Close is concurrent-safe and idempotent. It waits for cleanup to finish.
+// Close is concurrent-safe and idempotent and waits for reclamation to finish.
 func (m *RingBufferManager) Close() error {
 	if !m.closed.Swap(true) {
 		close(m.stop)

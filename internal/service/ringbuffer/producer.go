@@ -1,13 +1,14 @@
 package ringbuffer
 
-// RingBufferProducer is a renewable one-minute lease. Push renews it; call Renew
-// during longer pauses and Close when production ends. Multiple producers may
-// share a buffer. All writes go through RingBufferManager.Push. Do not copy it.
+// RingBufferProducer stays connected until Close or its connection context is
+// canceled. The manager renews its lease even without Push. No per-producer
+// goroutine or timer is created. Do not copy it.
 type RingBufferProducer struct {
 	manager *RingBufferManager
 	lease   ringBufferLease
 }
 
+// Renew explicitly extends the lease; connected producers also renew automatically.
 func (p *RingBufferProducer) Renew() error {
 	if p == nil {
 		return ErrRingBufferInvalidLease
@@ -15,7 +16,7 @@ func (p *RingBufferProducer) Renew() error {
 	return p.manager.renew(&p.lease)
 }
 
-// Close releases the producer lease. Repeated calls are harmless.
+// Close marks the producer disconnected. Repeated calls are harmless.
 func (p *RingBufferProducer) Close() error {
 	if p == nil {
 		return ErrRingBufferInvalidLease

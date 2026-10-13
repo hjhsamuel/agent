@@ -3,7 +3,7 @@ package ringbuffer
 type ringBufferLeaseHeap []*ringBufferLease
 
 func (h ringBufferLeaseHeap) Len() int           { return len(h) }
-func (h ringBufferLeaseHeap) Less(i, j int) bool { return h[i].deadline.Before(h[j].deadline) }
+func (h ringBufferLeaseHeap) Less(i, j int) bool { return h[i].deadline < h[j].deadline }
 func (h ringBufferLeaseHeap) Swap(i, j int) {
 	h[i], h[j] = h[j], h[i]
 	h[i].index, h[j].index = i, j
