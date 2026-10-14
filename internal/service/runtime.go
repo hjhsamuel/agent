@@ -122,6 +122,18 @@ func (s *Service) Run(user, id string, content string) error {
 	return nil
 }
 
+func (s *Service) ReRun(id string) {
+	sessionId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return
+	}
+
+	s.store.UpdateSession(
+		bson.M{"_id": sessionId, "state": schema.SessionWait},
+		bson.M{"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()}},
+	)
+}
+
 func runtimeEventChunks(event *session.Event) ([]ringbuffer.SSEChunk, error) {
 	if event == nil {
 		return nil, nil

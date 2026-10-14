@@ -27,3 +27,41 @@ func (d *Store) CreateTempSession(obj *schema.Session) (bson.ObjectID, error) {
 	id := result.InsertedID.(bson.ObjectID)
 	return id, nil
 }
+
+func (d *Store) AddMessage(obj *schema.Message) error {
+	ctx := context.Background()
+
+	session, err := d.StartSession()
+	if err != nil {
+		return err
+	}
+	defer session.EndSession(ctx)
+
+	_, err = session.WithTransaction(ctx, func(sc context.Context) (any, error) {
+		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
+			sc,
+			bson.M{"_id": obj.Session},
+			bson.M{"$inc": bson.M{"message_seq": 1}},
+		)
+		if err = result.Err(); err != nil {
+			return nil, err
+		}
+
+		var sessionObj schema.Session
+		if err = result.Decode(&sessionObj); err != nil {
+			return nil, err
+		}
+
+		obj.Sequence = sessionObj.MessageSeq
+		_, err = d.getCollection(schema.MessageCollection).InsertOne(sc, obj)
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, nil
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}

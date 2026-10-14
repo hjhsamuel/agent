@@ -25,6 +25,7 @@ const (
 	SessionTemp    SessionStatus = iota // 默认状态，临时会话
 	SessionRunning                      // 运行中
 	SessionDone                         // 结束运行
+	SessionWait                         // 等待用户输入
 )
 
 const MessageCollection = "message"
