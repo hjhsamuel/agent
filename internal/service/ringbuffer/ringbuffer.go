@@ -66,14 +66,14 @@ func (s *ringBufferStorage) slot(sequence uint64, allocate bool) *atomic.Pointer
 	return &segment.slots[pos%ringBufferSegmentSize]
 }
 
-func (b *RingBuffer) push(data []byte, capacity int) (uint64, bool) {
+func (b *RingBuffer) push(chunk SSEChunk, capacity int) (uint64, bool) {
 	storage := b.getStorage(capacity)
 	if storage == nil {
 		return 0, false
 	}
 	sequence := b.written.Add(1)
-	chunk := &SSEChunk{Sequence: sequence, Data: data}
-	b.publish(storage, chunk)
+	chunk.Sequence = sequence
+	b.publish(storage, &chunk)
 	return sequence, true
 }
 
@@ -99,25 +99,53 @@ func (b *RingBuffer) publish(storage *ringBufferStorage, chunk *SSEChunk) {
 	}
 }
 
-// resumeSequence returns the position preceding the next chunk to deliver.
-// Zero starts at the oldest retained chunk. A missing nonzero sequence resumes
-// at the newest chunk instead; a retained sequence resumes immediately after it.
-func (b *RingBuffer) resumeSequence(sequence uint64) uint64 {
+// reconnect resumes after a retained sequence, or returns the latest retained
+// end marker itself when the sequence is missing. Without an end marker, it
+// reports no data so Next waits for a safe boundary.
+// The third result records that the sequence was missing, so waiting consumers
+// keep waiting for a boundary even if a new buffer later reuses that sequence.
+func (b *RingBuffer) reconnect(sequence uint64) (SSEChunk, bool, bool) {
 	if sequence == 0 {
-		return 0
+		chunk, ok := b.next(0)
+		return chunk, ok, false
+	}
+	storage := b.storage.Load()
+	if storage == nil {
+		return SSEChunk{}, false, true
 	}
 	written := b.written.Load()
-	if storage := b.storage.Load(); storage != nil && sequence <= written && written-sequence < storage.capacity {
+	if sequence <= written && written-sequence < storage.capacity {
 		if slot := storage.slot(sequence, false); slot != nil {
 			if chunk := slot.Load(); chunk != nil && chunk.Sequence == sequence {
-				return sequence
+				next, ok := b.next(sequence)
+				return next, ok, false
 			}
 		}
 	}
-	if written > 0 {
-		return written - 1
+	chunk, ok := b.latestEnd()
+	return chunk, ok, true
+}
+
+func (b *RingBuffer) latestEnd() (SSEChunk, bool) {
+	storage := b.storage.Load()
+	if storage == nil {
+		return SSEChunk{}, false
 	}
-	return 0
+	written := b.written.Load()
+	oldest := uint64(1)
+	if written >= storage.capacity {
+		oldest = written - storage.capacity + 1
+	}
+	for current := written; current >= oldest; current-- {
+		if slot := storage.slot(current, false); slot != nil {
+			if chunk := slot.Load(); chunk != nil && chunk.Sequence == current && chunk.Type == SSEChunkTypeEnd {
+				// Return the immutable marker snapshot directly, so a concurrent
+				// overwrite cannot substitute an ordinary data chunk at this position.
+				return SSEChunk{Sequence: chunk.Sequence, Type: chunk.Type}, true
+			}
+		}
+	}
+	return SSEChunk{}, false
 }
 
 // next reads without removing the chunk so clients can replay retained data.
@@ -148,7 +176,7 @@ func (b *RingBuffer) next(after uint64) (SSEChunk, bool) {
 			}
 			return SSEChunk{}, false
 		}
-		return SSEChunk{Sequence: chunk.Sequence, Data: bytes.Clone(chunk.Data)}, true
+		return SSEChunk{Sequence: chunk.Sequence, Type: chunk.Type, Data: bytes.Clone(chunk.Data)}, true
 	}
 }
 

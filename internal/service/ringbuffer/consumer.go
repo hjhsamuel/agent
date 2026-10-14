@@ -10,6 +10,7 @@ type RingBufferConsumer struct {
 	lease        ringBufferLease
 	sequence     uint64 // Cursor fields are protected by lease.reading.
 	reconnecting bool
+	awaitingEnd  bool
 }
 
 // Next waits for the next chunk at this consumer's position, cancellation or
@@ -35,15 +36,22 @@ func (c *RingBufferConsumer) Next(ctx context.Context) (SSEChunk, error) {
 		if err := ctx.Err(); err != nil {
 			return SSEChunk{}, err
 		}
-		after := c.sequence
+		var chunk SSEChunk
+		var ok bool
 		if c.reconnecting {
 			// Producers can overwrite the client's sequence after acquisition
 			// or while Next waits, so resolve until the first successful read.
-			after = lease.buffer.resumeSequence(after)
+			if c.awaitingEnd {
+				chunk, ok = lease.buffer.latestEnd()
+			} else {
+				chunk, ok, c.awaitingEnd = lease.buffer.reconnect(c.sequence)
+			}
+		} else {
+			chunk, ok = lease.buffer.next(c.sequence)
 		}
-		if chunk, ok := lease.buffer.next(after); ok {
+		if ok {
 			c.sequence = chunk.Sequence
-			c.reconnecting = false
+			c.reconnecting, c.awaitingEnd = false, false
 			return chunk, nil
 		}
 		select {

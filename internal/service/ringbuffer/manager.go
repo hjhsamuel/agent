@@ -73,7 +73,9 @@ func (m *RingBufferManager) AcquireProducer(ctx context.Context, id string) (*Ri
 // existing active consumer with ErrRingBufferConsumerBusy. Next and Renew extend
 // it. Close the old consumer before reconnecting with the last sequence received
 // by the client. A retained sequence resumes at the following chunk; a missing
-// sequence resumes at the newest chunk. Zero starts at the oldest retained chunk.
+// sequence resumes at the newest retained SSEChunkTypeEnd, including the marker.
+// If no marker is retained, Next waits for one. Zero starts at the oldest
+// retained chunk.
 // A closed or expired consumer can be replaced while the buffer is retained.
 func (m *RingBufferManager) AcquireConsumer(id string, lastSequence uint64) (*RingBufferConsumer, error) {
 	c := &RingBufferConsumer{manager: m}
@@ -130,10 +132,12 @@ func (m *RingBufferManager) acquire(id string, lease *ringBufferLease, kind ring
 	return nil
 }
 
-// Push copies data and publishes without locking. Multiple producers may push
-// concurrently; stalled writers cannot replace newer sequences. Overflow
+// Push assigns Sequence, copies Data and publishes without locking. The input
+// Sequence is ignored. End markers must have empty Data. Human-in-the-loop
+// signals are delivered in order without pausing producers. Multiple producers
+// may push concurrently; stalled writers cannot replace newer sequences. Overflow
 // directly overwrites old chunks and never waits for the consumer.
-func (m *RingBufferManager) Push(producer *RingBufferProducer, data []byte) (uint64, error) {
+func (m *RingBufferManager) Push(producer *RingBufferProducer, chunk SSEChunk) (uint64, error) {
 	if producer == nil || producer.manager != m || producer.lease.buffer == nil {
 		return 0, ErrRingBufferInvalidLease
 	}
@@ -141,7 +145,17 @@ func (m *RingBufferManager) Push(producer *RingBufferProducer, data []byte) (uin
 	if err := m.checkLease(lease); err != nil {
 		return 0, err
 	}
-	sequence, ok := lease.buffer.push(bytes.Clone(data), m.capacity)
+	switch chunk.Type {
+	case SSEChunkTypeData, SSEChunkTypeReasoning, SSEChunkTypeHumanInTheLoop:
+	case SSEChunkTypeEnd:
+		if len(chunk.Data) != 0 {
+			return 0, ErrRingBufferInvalidChunk
+		}
+	default:
+		return 0, ErrRingBufferInvalidChunk
+	}
+	chunk.Data = bytes.Clone(chunk.Data)
+	sequence, ok := lease.buffer.push(chunk, m.capacity)
 	if !ok {
 		if err := m.checkLease(lease); err != nil {
 			return 0, err

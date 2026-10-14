@@ -30,6 +30,16 @@ var (
 	ErrRingBufferLeaseClosed   = errors.New("ringbuffer lease is closed")
 	ErrRingBufferInvalidLease  = errors.New("invalid ringbuffer lease")
 	ErrRingBufferReadBusy      = errors.New("consumer already has a pending read")
+	ErrRingBufferInvalidChunk  = errors.New("invalid SSE chunk type or payload")
+)
+
+type SSEChunkType uint8
+
+const (
+	SSEChunkTypeData SSEChunkType = iota
+	SSEChunkTypeReasoning
+	SSEChunkTypeEnd            // Ends a complete logical chunk; Data must be empty.
+	SSEChunkTypeHumanInTheLoop // Requests human intervention; Data may carry details.
 )
 
 // SSEChunk holds opaque SSE bytes. Sequence starts at 1 per buffer. Each read
@@ -37,6 +47,7 @@ var (
 // Overwriting old chunks can create gaps in delivered sequences.
 type SSEChunk struct {
 	Sequence uint64
+	Type     SSEChunkType
 	Data     []byte
 }
 

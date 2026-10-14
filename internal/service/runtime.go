@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hjhsamuel/agent/internal/service/adapter"
+	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"google.golang.org/adk/v2/agent"
@@ -79,9 +80,16 @@ func (s *Service) Run(user, id string, content string) error {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	producer, err := s.rbs.AcquireProducer(ctx, id)
+	if err != nil {
+		cancel()
+		return err
+	}
 	s.setLife(id, cancel)
 
 	go func() {
+		defer s.cancel(id)
+
 		events := r.Run(
 			ctx,
 			user,
@@ -95,8 +103,32 @@ func (s *Service) Run(user, id string, content string) error {
 			if err != nil {
 				return
 			}
-			if event == nil || event.Content == nil {
+			if event == nil || event.Content == nil || event.Author != "root" {
 				continue
+			}
+
+			if !event.Partial {
+				for _, part := range event.Content.Parts {
+					if part.Text != "" {
+						_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{Type: ringbuffer.SSEChunkTypeEnd})
+					}
+				}
+			} else {
+				for _, part := range event.Content.Parts {
+					if part == nil || part.Text == "" {
+						continue
+					}
+
+					chunk := ringbuffer.SSEChunk{
+						Data: []byte(part.Text),
+					}
+					if part.Thought {
+						chunk.Type = ringbuffer.SSEChunkTypeReasoning
+					} else {
+						chunk.Type = ringbuffer.SSEChunkTypeData
+					}
+					_, _ = s.rbs.Push(producer, chunk)
+				}
 			}
 		}
 	}()
