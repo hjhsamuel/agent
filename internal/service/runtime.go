@@ -32,7 +32,7 @@ func (s *Service) getRunner(cfg *AgentConfig) (*runner.Runner, error) {
 	})
 
 	return runner.New(runner.Config{
-		AppName:           "root",
+		AppName:           schema.MainAgentName,
 		Agent:             agt,
 		SessionService:    adapter.NewSessionService(s.store),
 		AutoCreateSession: true,
@@ -71,7 +71,7 @@ func (s *Service) Run(user, id string, content string) error {
 	}
 
 	r, err := s.getRunner(&AgentConfig{
-		Name:        "root",
+		Name:        schema.MainAgentName,
 		Description: "main agent",
 		Prompt:      "You are an AI agent running inside a multi-user agent platform that supports both normal conversations and long-running tasks.",
 	})
@@ -103,17 +103,23 @@ func (s *Service) Run(user, id string, content string) error {
 			if err != nil {
 				return
 			}
-			if event == nil || event.Content == nil || event.Author != "root" {
+
+			if event == nil || event.Content == nil {
 				continue
 			}
 
 			if !event.Partial {
 				for _, part := range event.Content.Parts {
 					if part.Text != "" {
+						// 这是一条完整的消息，传递结束标识
 						_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{Type: ringbuffer.SSEChunkTypeEnd})
 					}
 				}
 			} else {
+				// 只处理来自主 agent 的消息
+				if event.Author != schema.MainAgentName {
+					continue
+				}
 				for _, part := range event.Content.Parts {
 					if part == nil || part.Text == "" {
 						continue
