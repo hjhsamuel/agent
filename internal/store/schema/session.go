@@ -17,6 +17,13 @@ type Session struct {
 	MessageSeq int64         `bson:"message_seq"`
 	CreatedAt  time.Time     `bson:"created_at"`
 	UpdatedAt  time.Time     `bson:"updated_at"`
+	Wait       []*WaitInput  `bson:"wait"` // input_required 信息
+}
+
+type WaitInput struct {
+	ID    string `bson:"id"`
+	Input string `bson:"input"` // 用户输入信息
+	// TODO
 }
 
 type SessionStatus int

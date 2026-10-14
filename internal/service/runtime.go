@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -47,8 +48,10 @@ func (s *Service) getRunner(cfg *AgentConfig) (*runner.Runner, error) {
 }
 
 func (s *Service) Run(user, id string, content string) error {
+	var sessionId bson.ObjectID
+	var err error
 	if id != "" {
-		sessionId, err := bson.ObjectIDFromHex(id)
+		sessionId, err = bson.ObjectIDFromHex(id)
 		if err != nil {
 			return errors.New("invalid session")
 		}
@@ -60,7 +63,7 @@ func (s *Service) Run(user, id string, content string) error {
 			return err
 		}
 	} else {
-		sessionId, err := s.store.CreateTempSession(&schema.Session{
+		sessionId, err = s.store.CreateTempSession(&schema.Session{
 			User:      user,
 			Name:      content[:20] + "...", // 暂时粗暴的截取前20个字符，后续做主题提取
 			State:     schema.SessionTemp,
@@ -107,6 +110,12 @@ func (s *Service) Run(user, id string, content string) error {
 				return
 			}
 
+			// Persist the complete assistant message before publishing its end marker.
+			if err := s.addRuntimeMessage(sessionId, event); err != nil {
+				slog.ErrorContext(ctx, "persist assistant message", "session_id", id, "error", err)
+				return
+			}
+
 			chunks, err := runtimeEventChunks(event)
 			if err != nil {
 				return
@@ -120,6 +129,30 @@ func (s *Service) Run(user, id string, content string) error {
 	}()
 
 	return nil
+}
+
+func (s *Service) addRuntimeMessage(sessionId bson.ObjectID, event *session.Event) error {
+	if event == nil || event.Partial || event.Author != schema.MainAgentName ||
+		event.Content == nil || event.Content.Role != string(genai.RoleModel) ||
+		len(event.LongRunningToolIDs) > 0 || event.RequestedInput != nil {
+		return nil
+	}
+
+	var content strings.Builder
+	for _, part := range event.Content.Parts {
+		if part != nil && !part.Thought {
+			content.WriteString(part.Text)
+		}
+	}
+	if content.Len() == 0 {
+		return nil
+	}
+	return s.store.AddMessage(&schema.Message{
+		Session:   sessionId,
+		Role:      schema.RoleAssistant,
+		Content:   content.String(),
+		CreatedAt: time.Now(),
+	})
 }
 
 func (s *Service) ReRun(id string) {
