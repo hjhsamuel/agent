@@ -65,3 +65,17 @@ func (d *Store) AddMessage(obj *schema.Message) error {
 	}
 	return nil
 }
+
+func (d *Store) FindOneAndUpdateSession(filter, update bson.M) (*schema.Session, error) {
+	result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(context.Background(), filter, update)
+	if err := result.Err(); err != nil {
+		return nil, err
+	}
+
+	var obj schema.Session
+	if err := result.Decode(&obj); err != nil {
+		return nil, err
+	}
+
+	return &obj, nil
+}

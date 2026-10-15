@@ -1,10 +1,10 @@
 package ringbuffer
 
 import (
-	"bytes"
 	"container/heap"
 	"context"
 	"hash/maphash"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -154,7 +154,7 @@ func (m *RingBufferManager) Push(producer *RingBufferProducer, chunk SSEChunk) (
 	default:
 		return 0, ErrRingBufferInvalidChunk
 	}
-	chunk.Data = bytes.Clone(chunk.Data)
+	chunk.Data = strings.Clone(chunk.Data)
 	sequence, ok := lease.buffer.push(chunk, m.capacity)
 	if !ok {
 		if err := m.checkLease(lease); err != nil {

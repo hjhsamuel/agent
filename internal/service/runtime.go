@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,25 +15,45 @@ import (
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
 	"google.golang.org/adk/v2/runner"
-	"google.golang.org/adk/v2/session"
 	"google.golang.org/adk/v2/session/compaction"
+	"google.golang.org/adk/v2/tool/toolconfirmation"
 	"google.golang.org/genai"
 )
 
-func (s *Service) getRunner(cfg *AgentConfig) (*runner.Runner, error) {
-	model, llmModel, err := s.randomModel(schema.ChatModel)
+func (s *Service) getAgent(cfg *AgentConfig) (agent.Agent, *schema.ModelConfig, error) {
+	m, llmModel, err := s.randomModel(schema.ChatModel)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	var subagents []agent.Agent
+	if len(cfg.SubAgents) != 0 {
+		subagents = append(slices.Clone(s.tool.SubAgents), cfg.SubAgents...)
+	} else {
+		subagents = s.tool.SubAgents
+	}
+
 	agt, err := llmagent.New(llmagent.Config{
 		Name:        cfg.Name,
 		Description: cfg.Description,
 		Instruction: cfg.Prompt,
-		SubAgents:   s.tool.SubAgents,
+		SubAgents:   subagents,
 		Tools:       s.tool.Tools,
 		Toolsets:    s.tool.Toolsets,
 		Model:       llmModel,
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return agt, &m.Options, nil
+}
+
+func (s *Service) getRunner(cfg *AgentConfig) (*runner.Runner, error) {
+	agt, opts, err := s.getAgent(cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	return runner.New(runner.Config{
 		AppName:           schema.MainAgentName,
@@ -41,7 +61,7 @@ func (s *Service) getRunner(cfg *AgentConfig) (*runner.Runner, error) {
 		SessionService:    adapter.NewSessionService(s.store),
 		AutoCreateSession: true,
 		Compaction: &compaction.Config{
-			TokenThreshold:     int(float64(model.Options.ContextLimit) * CompactRatio),
+			TokenThreshold:     int(float64(opts.ContextLimit) * CompactRatio),
 			EventRetentionSize: 3,
 		},
 	})
@@ -51,6 +71,7 @@ func (s *Service) Run(user, id string, content string) error {
 	var sessionId bson.ObjectID
 	var err error
 	if id != "" {
+		// 多轮对话
 		sessionId, err = bson.ObjectIDFromHex(id)
 		if err != nil {
 			return errors.New("invalid session")
@@ -63,6 +84,7 @@ func (s *Service) Run(user, id string, content string) error {
 			return err
 		}
 	} else {
+		// 创建会话
 		sessionId, err = s.store.CreateTempSession(&schema.Session{
 			User:      user,
 			Name:      content[:20] + "...", // 暂时粗暴的截取前20个字符，后续做主题提取
@@ -76,6 +98,15 @@ func (s *Service) Run(user, id string, content string) error {
 		id = sessionId.Hex()
 	}
 
+	msg := genai.NewContentFromText(content, genai.RoleUser)
+	return s.newTurn(user, sessionId, msg)
+}
+
+func (s *Service) newTurn(
+	user string,
+	sessionId bson.ObjectID,
+	msg *genai.Content,
+) error {
 	r, err := s.getRunner(&AgentConfig{
 		Name:        schema.MainAgentName,
 		Description: "main agent",
@@ -86,180 +117,244 @@ func (s *Service) Run(user, id string, content string) error {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	producer, err := s.rbs.AcquireProducer(ctx, id)
+	producer, err := s.rbs.AcquireProducer(ctx, sessionId.Hex())
 	if err != nil {
 		cancel()
 		return err
 	}
-	s.setLife(id, cancel)
+	s.setLife(sessionId.Hex(), cancel)
 
+	s.wg.Add(1)
 	go func() {
-		defer s.cancel(id)
+		defer s.wg.Done()
+		defer s.cancel(sessionId.Hex())
 
-		events := r.Run(
-			ctx,
-			user,
-			id,
-			genai.NewContentFromText(content, genai.RoleUser),
-			agent.RunConfig{
-				StreamingMode: agent.StreamingModeSSE,
-			},
-		)
-		for event, err := range events {
+		message := msg
+
+		for {
+			next, err := s.run(ctx, user, sessionId, r, producer, message)
+			if err != nil {
+				return
+			}
+			if !next {
+				return
+			}
+
+			// 等待用户输入
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second * 10):
+
+			}
+
+			obj, err := s.store.FindOneAndUpdateSession(
+				bson.M{"_id": sessionId, "state": schema.SessionRunning},
+				bson.M{
+					"$set": bson.M{"updated_at": time.Now()},
+					//"$unset": bson.M{"wait": 1},
+				},
+			)
 			if err != nil {
 				return
 			}
 
-			// Persist the complete assistant message before publishing its end marker.
-			if err := s.addRuntimeMessage(sessionId, event); err != nil {
-				slog.ErrorContext(ctx, "persist assistant message", "session_id", id, "error", err)
-				return
+			parts := make([]*genai.Part, 0, len(obj.Wait))
+			for _, item := range obj.Wait {
+				parts = append(parts, &genai.Part{
+					FunctionResponse: &genai.FunctionResponse{
+						ID:   item.ID,
+						Name: toolconfirmation.FunctionCallName,
+						Response: map[string]any{
+							"confirmed": true,
+							"payload":   item.Content,
+						},
+					},
+				})
 			}
-
-			chunks, err := runtimeEventChunks(event)
-			if err != nil {
-				return
-			}
-			for _, chunk := range chunks {
-				if _, err := s.rbs.Push(producer, chunk); err != nil {
-					return
-				}
-			}
+			message = buildInputRequiredMessage(obj.Wait)
 		}
 	}()
 
 	return nil
 }
 
-func (s *Service) addRuntimeMessage(sessionId bson.ObjectID, event *session.Event) error {
-	if event == nil || event.Partial || event.Author != schema.MainAgentName ||
-		event.Content == nil || event.Content.Role != string(genai.RoleModel) ||
-		len(event.LongRunningToolIDs) > 0 || event.RequestedInput != nil {
-		return nil
-	}
+func (s *Service) run(
+	ctx context.Context,
+	user string,
+	sessionId bson.ObjectID,
+	r *runner.Runner,
+	producer *ringbuffer.RingBufferProducer,
+	msg *genai.Content,
+) (bool, error) {
+	inputRequiredReqs := make([]*schema.WaitInput, 0)
 
-	var content strings.Builder
-	for _, part := range event.Content.Parts {
-		if part != nil && !part.Thought {
-			content.WriteString(part.Text)
+	events := r.Run(ctx, user, sessionId.Hex(), msg, agent.RunConfig{StreamingMode: agent.StreamingModeSSE})
+	for event, err := range events {
+		if err != nil {
+			_ = s.store.UpdateSession(
+				bson.M{"_id": sessionId, "state": schema.SessionRunning},
+				bson.M{"$set": bson.M{"state": schema.SessionDone}},
+			)
+			return false, err
 		}
-	}
-	if content.Len() == 0 {
-		return nil
-	}
-	return s.store.AddMessage(&schema.Message{
-		Session:   sessionId,
-		Role:      schema.RoleAssistant,
-		Content:   content.String(),
-		CreatedAt: time.Now(),
-	})
-}
 
-func (s *Service) ReRun(id string) {
-	sessionId, err := bson.ObjectIDFromHex(id)
-	if err != nil {
-		return
-	}
-
-	s.store.UpdateSession(
-		bson.M{"_id": sessionId, "state": schema.SessionWait},
-		bson.M{"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()}},
-	)
-}
-
-func runtimeEventChunks(event *session.Event) ([]ringbuffer.SSEChunk, error) {
-	if event == nil {
-		return nil, nil
-	}
-	// ADK uses LongRunningToolIDs for both remote A2A input_required and
-	// tool input/confirmation requests. Wait for complete arguments before
-	// publishing the request ID and original input details.
-	if !event.Partial && (len(event.LongRunningToolIDs) > 0 || event.RequestedInput != nil) {
-		return humanInTheLoopChunks(event)
-	}
-	if event.Content == nil {
-		return nil, nil
-	}
-
-	var chunks []ringbuffer.SSEChunk
-	for _, part := range event.Content.Parts {
-		if part == nil || part.Text == "" {
+		if event == nil {
 			continue
 		}
-		if !event.Partial {
-			// 这是一条完整的消息，传递结束标识。
-			chunks = append(chunks, ringbuffer.SSEChunk{Type: ringbuffer.SSEChunkTypeEnd})
+
+		// stream
+		if event.Partial {
+			if event.Content == nil {
+				continue
+			}
+			if event.Author == schema.MainAgentName {
+				for _, part := range event.Content.Parts {
+					if part == nil || part.Text == "" {
+						continue
+					}
+
+					chunk := ringbuffer.SSEChunk{Data: part.Text}
+					if part.Thought {
+						chunk.Type = ringbuffer.SSEChunkTypeReasoning
+					} else {
+						chunk.Type = ringbuffer.SSEChunkTypeData
+					}
+					_, _ = s.rbs.Push(producer, chunk)
+				}
+			}
 			continue
 		}
-		// 普通流式文本只处理主 agent；交互请求不受此限制。
-		if event.Author != schema.MainAgentName {
+
+		if event.Content == nil {
 			continue
 		}
-		chunk := ringbuffer.SSEChunk{Type: ringbuffer.SSEChunkTypeData, Data: []byte(part.Text)}
-		if part.Thought {
-			chunk.Type = ringbuffer.SSEChunkTypeReasoning
-		}
-		chunks = append(chunks, chunk)
-	}
-	return chunks, nil
-}
 
-func humanInTheLoopChunks(event *session.Event) ([]ringbuffer.SSEChunk, error) {
-	var requests []*HumanInTheLoopRequest
-	byID := make(map[string]*HumanInTheLoopRequest)
-	requestFor := func(id string) *HumanInTheLoopRequest {
-		if request := byID[id]; request != nil {
-			return request
-		}
-		request := &HumanInTheLoopRequest{ID: id}
-		byID[id] = request
-		requests = append(requests, request)
-		return request
-	}
-	for _, id := range event.LongRunningToolIDs {
-		requestFor(id)
-	}
-	if input := event.RequestedInput; input != nil {
-		request := requestFor(input.InterruptID)
-		request.Message = input.Message
-		request.Payload = input.Payload
-		request.ResponseSchema = input.ResponseSchema
-	}
-
-	var messages []string
-	if event.Content != nil {
+		var content strings.Builder
 		for _, part := range event.Content.Parts {
 			if part == nil {
 				continue
 			}
-			if part.Text != "" && !part.Thought {
-				messages = append(messages, part.Text)
+
+			// 只将来自主 agent 的模型信息进行保存
+			if !part.Thought && event.Content.Role == "model" && part.Text != "" && event.Author == schema.MainAgentName {
+				content.WriteString(part.Text)
+				_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{Type: ringbuffer.SSEChunkTypeEnd})
 			}
-			if call := part.FunctionCall; call != nil {
-				if request := byID[call.ID]; request != nil {
-					request.Name, request.Args = call.Name, call.Args
+
+			// 处理 input_required
+			if part.FunctionCall != nil && part.FunctionCall.Name == toolconfirmation.FunctionCallName {
+				value, ok := part.FunctionCall.Args["toolConfirmation"]
+				if !ok || value == nil {
+					continue
 				}
-			}
-			if response := part.FunctionResponse; response != nil {
-				if request := byID[response.ID]; request != nil {
-					if request.Name == "" {
-						request.Name = response.Name
-					}
-					request.Response = response.Response
+				data, err := json.Marshal(value)
+				if err != nil {
+					continue
 				}
+				var confirmation toolconfirmation.ToolConfirmation
+				if err = json.Unmarshal(data, &confirmation); err != nil {
+					continue
+				}
+				inputRequiredReqs = append(inputRequiredReqs, &schema.WaitInput{
+					ID:   part.FunctionCall.ID,
+					Hint: confirmation.Hint,
+				})
 			}
+		}
+		// 添加展示信息
+		if content.Len() != 0 {
+			_ = s.store.AddMessage(&schema.Message{
+				Session:   sessionId,
+				Role:      schema.RoleAssistant,
+				Content:   content.String(),
+				CreatedAt: time.Now(),
+			})
 		}
 	}
-	chunks := make([]ringbuffer.SSEChunk, 0, len(requests))
-	for _, request := range requests {
-		if request.Message == "" {
-			request.Message = strings.Join(messages, "\n")
+
+	if len(inputRequiredReqs) != 0 {
+		_ = s.store.UpdateSession(
+			bson.M{"_id": sessionId, "state": schema.SessionRunning},
+			bson.M{"$set": bson.M{"state": schema.SessionWait, "wait": inputRequiredReqs}},
+		)
+		for _, item := range inputRequiredReqs {
+			_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
+				Type: ringbuffer.SSEChunkTypeHumanInTheLoop,
+				Data: ringbuffer.HITLEvent{ID: item.ID, Content: item.Content}.ToData(),
+			})
 		}
-		data, err := json.Marshal(request)
-		if err != nil {
-			return nil, err
-		}
-		chunks = append(chunks, ringbuffer.SSEChunk{Type: ringbuffer.SSEChunkTypeHumanInTheLoop, Data: data})
+
+		return true, nil
 	}
-	return chunks, nil
+
+	return false, nil
+}
+
+func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, content string) error {
+	sessionId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+	obj, err := s.store.FindOneAndUpdateSession(
+		bson.M{
+			"_id":   sessionId,
+			"state": schema.SessionWait,
+			"wait":  bson.M{"$elemMatch": bson.M{"id": toolCallId, "content": ""}},
+		},
+		bson.M{"$set": bson.M{"wait.$.content": content}},
+	)
+	if err != nil {
+		return err
+	}
+
+	// 检查是否补充完毕
+	parts := make([]*genai.Part, 0, len(obj.Wait))
+	for _, item := range obj.Wait {
+		if item.ID == toolCallId {
+			parts = append(parts, &genai.Part{
+				FunctionResponse: &genai.FunctionResponse{
+					ID:   item.ID,
+					Name: toolconfirmation.FunctionCallName,
+					Response: map[string]any{
+						"confirmed": true,
+						"payload":   content,
+					},
+				},
+			})
+			continue
+		}
+
+		if item.Content == "" {
+			return nil
+		}
+
+		parts = append(parts, &genai.Part{
+			FunctionResponse: &genai.FunctionResponse{
+				ID:   item.ID,
+				Name: toolconfirmation.FunctionCallName,
+				Response: map[string]any{
+					"confirmed": true,
+					"payload":   item.Content,
+				},
+			},
+		})
+	}
+	err = s.store.UpdateSession(
+		bson.M{"_id": sessionId, "state": schema.SessionWait},
+		bson.M{"$set": bson.M{"state": schema.SessionRunning}},
+	)
+	if err != nil {
+		return nil
+	}
+
+	for i := 0; i < 2; i++ {
+		if !s.lifeExists(id) {
+			msg := &genai.Content{Role: genai.RoleUser, Parts: parts}
+			return s.newTurn(user, sessionId, msg)
+		}
+		time.Sleep(time.Second * 3)
+	}
+	// 原协程仍在运行，直接退出
+	return nil
 }

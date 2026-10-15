@@ -1,7 +1,7 @@
 package ringbuffer
 
 import (
-	"bytes"
+	"strings"
 	"sync/atomic"
 )
 
@@ -176,7 +176,7 @@ func (b *RingBuffer) next(after uint64) (SSEChunk, bool) {
 			}
 			return SSEChunk{}, false
 		}
-		return SSEChunk{Sequence: chunk.Sequence, Type: chunk.Type, Data: bytes.Clone(chunk.Data)}, true
+		return SSEChunk{Sequence: chunk.Sequence, Type: chunk.Type, Data: strings.Clone(chunk.Data)}, true
 	}
 }
 

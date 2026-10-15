@@ -2,6 +2,7 @@ package ringbuffer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync/atomic"
 	"time"
@@ -48,7 +49,17 @@ const (
 type SSEChunk struct {
 	Sequence uint64
 	Type     SSEChunkType
-	Data     []byte
+	Data     string
+}
+
+type HITLEvent struct {
+	ID      string `json:"id"`
+	Content string `json:"content"`
+}
+
+func (e HITLEvent) ToData() string {
+	content, _ := json.Marshal(e)
+	return string(content)
 }
 
 type ringBufferLease struct {

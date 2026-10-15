@@ -21,9 +21,9 @@ type Session struct {
 }
 
 type WaitInput struct {
-	ID    string `bson:"id"`
-	Input string `bson:"input"` // 用户输入信息
-	// TODO
+	ID      string `bson:"id"`
+	Hint    string `bson:"hint"`    // 传递给用户的提示信息
+	Content string `bson:"content"` // 用户输入的补充信息
 }
 
 type SessionStatus int
