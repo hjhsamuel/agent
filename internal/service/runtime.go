@@ -20,17 +20,19 @@ import (
 	"google.golang.org/genai"
 )
 
-func (s *Service) getAgent(cfg *AgentConfig) (agent.Agent, *schema.ModelConfig, error) {
+func (s *Service) getAgent(user string, cfg *AgentConfig) (agent.Agent, *schema.ModelConfig, error) {
 	m, llmModel, err := s.randomModel(schema.ChatModel)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	toolPack := s.tool.All(user)
+
 	var subagents []agent.Agent
 	if len(cfg.SubAgents) != 0 {
-		subagents = append(slices.Clone(s.tool.SubAgents), cfg.SubAgents...)
+		subagents = append(slices.Clone(toolPack.SubAgents), cfg.SubAgents...)
 	} else {
-		subagents = s.tool.SubAgents
+		subagents = toolPack.SubAgents
 	}
 
 	agt, err := llmagent.New(llmagent.Config{
@@ -38,8 +40,8 @@ func (s *Service) getAgent(cfg *AgentConfig) (agent.Agent, *schema.ModelConfig, 
 		Description: cfg.Description,
 		Instruction: cfg.Prompt,
 		SubAgents:   subagents,
-		Tools:       s.tool.Tools,
-		Toolsets:    s.tool.Toolsets,
+		Tools:       toolPack.Tools,
+		Toolsets:    toolPack.Toolsets,
 		Model:       llmModel,
 	})
 	if err != nil {
@@ -49,8 +51,8 @@ func (s *Service) getAgent(cfg *AgentConfig) (agent.Agent, *schema.ModelConfig, 
 	return agt, &m.Options, nil
 }
 
-func (s *Service) getRunner(cfg *AgentConfig) (*runner.Runner, error) {
-	agt, opts, err := s.getAgent(cfg)
+func (s *Service) getRunner(user string, cfg *AgentConfig) (*runner.Runner, error) {
+	agt, opts, err := s.getAgent(user, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -107,11 +109,14 @@ func (s *Service) newTurn(
 	sessionId bson.ObjectID,
 	msg *genai.Content,
 ) error {
-	r, err := s.getRunner(&AgentConfig{
-		Name:        schema.MainAgentName,
-		Description: "main agent",
-		Prompt:      "You are an AI agent running inside a multi-user agent platform that supports both normal conversations and long-running tasks.",
-	})
+	r, err := s.getRunner(
+		user,
+		&AgentConfig{
+			Name:        schema.MainAgentName,
+			Description: "main agent",
+			Prompt:      "You are an AI agent running inside a multi-user agent platform that supports both normal conversations and long-running tasks.",
+		},
+	)
 	if err != nil {
 		return err
 	}

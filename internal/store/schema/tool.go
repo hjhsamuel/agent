@@ -12,6 +12,7 @@ type Tool struct {
 	ID        bson.ObjectID `bson:"_id,omitempty"`
 	Name      string        `bson:"name"` // 工具名称，仅用于展示
 	Url       string        `bson:"url"`  // local：压缩包下载地址；a2a/mcp：远端服务地址
+	Type      ToolType      `bson:"type"`
 	Hash      *HashInfo     `bson:"hash"` // 仅用于本地工具校验
 	Enable    bool          `bson:"enable"`
 	CreatedAt time.Time     `bson:"created_at"`

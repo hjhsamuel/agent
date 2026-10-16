@@ -1,0 +1,70 @@
+package tool
+
+import (
+	"github.com/hjhsamuel/agent/internal/tool/a2ax"
+	"github.com/hjhsamuel/agent/internal/tool/local"
+	"github.com/hjhsamuel/agent/internal/tool/mcpx"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+)
+
+type Factory struct {
+	localTools   []tool.Tool
+	mcpTransport []mcp.Transport
+	a2aAgent     []agent.Agent
+}
+
+func (f *Factory) init() {
+	// local tool
+	f.localTools = local.GetTools()
+}
+
+func (f *Factory) AddMcp(path string) error {
+	transport := mcpx.NewTransport(path)
+	f.mcpTransport = append(f.mcpTransport, transport)
+	return nil
+}
+
+func (f *Factory) AddA2A(path string) error {
+	agt, err := a2ax.NewA2A(path)
+	if err != nil {
+		return err
+	}
+	f.a2aAgent = append(f.a2aAgent, agt)
+	return nil
+}
+
+func (f *Factory) All(user string) *Pack {
+	pack := Pack{
+		Tools:     f.localTools,
+		SubAgents: f.a2aAgent,
+		Toolsets:  make([]tool.Toolset, 0),
+	}
+
+	for _, item := range f.mcpTransport {
+		ts, err := mcpx.NewMCP(item, user)
+		if err != nil {
+			continue
+		}
+		pack.Toolsets = append(pack.Toolsets, ts)
+	}
+
+	return &pack
+}
+
+func NewFactory() *Factory {
+	f := &Factory{
+		localTools:   make([]tool.Tool, 0),
+		mcpTransport: make([]mcp.Transport, 0),
+		a2aAgent:     make([]agent.Agent, 0),
+	}
+	f.init()
+	return f
+}
+
+type Pack struct {
+	Tools     []tool.Tool
+	Toolsets  []tool.Toolset
+	SubAgents []agent.Agent
+}
