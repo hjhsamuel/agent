@@ -8,12 +8,6 @@ import (
 	"github.com/hjhsamuel/agent/api/common"
 )
 
-type Auth struct {
-	ID   int
-	Name string
-	jwt.RegisteredClaims
-}
-
 func AuthMiddleware(ctx *gin.Context) {
 	content, err := ctx.Cookie(common.GetTokenKey())
 	if err != nil || content == "" {
@@ -24,7 +18,7 @@ func AuthMiddleware(ctx *gin.Context) {
 		return
 	}
 
-	claim := &Auth{}
+	claim := &common.Auth{}
 	t, err := jwt.ParseWithClaims(content, claim, func(token *jwt.Token) (any, error) {
 		salt := common.GetTokenSalt()
 		return []byte(salt), nil

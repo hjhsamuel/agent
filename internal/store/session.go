@@ -6,7 +6,26 @@ import (
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
+
+func (d *Store) FindSession(
+	filter bson.M,
+	opts ...options.Lister[options.FindOptions],
+) ([]*schema.Session, error) {
+	ctx := context.Background()
+	cursor, err := d.getCollection(schema.SessionCollection).Find(ctx, filter, opts...)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var objs []*schema.Session
+	if err = cursor.All(ctx, &objs); err != nil {
+		return nil, err
+	}
+	return objs, nil
+}
 
 func (d *Store) UpdateSession(filter, update bson.M) error {
 	result, err := d.getCollection(schema.SessionCollection).UpdateOne(context.Background(), filter, update)

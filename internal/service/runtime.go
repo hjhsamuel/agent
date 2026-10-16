@@ -69,70 +69,79 @@ func (s *Service) getRunner(user string, cfg *AgentConfig) (*runner.Runner, erro
 	})
 }
 
+func (s *Service) acquireProducer(id string) (context.Context, *ringbuffer.RingBufferProducer, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	if s.setLife(id, cancel) {
+		return nil, nil, errors.New("session already running")
+	}
+
+	producer, err := s.rbs.AcquireProducer(ctx, id)
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+
+	return ctx, producer, nil
+}
+
 func (s *Service) Run(user, id string, content string) error {
-	var sessionId bson.ObjectID
-	var err error
-	if id != "" {
-		// 多轮对话
-		sessionId, err = bson.ObjectIDFromHex(id)
-		if err != nil {
-			return errors.New("invalid session")
-		}
-		err = s.store.UpdateSession(
-			bson.M{"_id": sessionId, "state": schema.SessionDone, "user": user},
-			bson.M{"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()}},
-		)
-		if err != nil {
-			return err
-		}
-	} else {
-		// 创建会话
-		sessionId, err = s.store.CreateTempSession(&schema.Session{
-			User:      user,
-			Name:      content[:20] + "...", // 暂时粗暴的截取前20个字符，后续做主题提取
-			State:     schema.SessionTemp,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		})
-		if err != nil {
-			return err
-		}
-		id = sessionId.Hex()
+	sessionId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return errors.New("invalid session")
+	}
+
+	ctx, producer, err := s.acquireProducer(sessionId.Hex())
+	if err != nil {
+		return err
+	}
+
+	// 多轮对话、首次对话
+	err = s.store.UpdateSession(
+		bson.M{
+			"_id":   sessionId,
+			"state": bson.M{"$in": []schema.SessionStatus{schema.SessionDone, schema.SessionTemp}},
+			"user":  user,
+		},
+		bson.M{"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()}},
+	)
+	if err != nil {
+		s.cancel(sessionId.Hex())
+		return err
 	}
 
 	msg := genai.NewContentFromText(content, genai.RoleUser)
-	return s.newTurn(user, sessionId, msg)
+	s.newTurn(ctx, producer, user, sessionId, msg)
+
+	return nil
 }
 
 func (s *Service) newTurn(
+	ctx context.Context,
+	producer *ringbuffer.RingBufferProducer,
 	user string,
 	sessionId bson.ObjectID,
 	msg *genai.Content,
-) error {
-	r, err := s.getRunner(
-		user,
-		&AgentConfig{
-			Name:        schema.MainAgentName,
-			Description: "main agent",
-			Prompt:      "You are an AI agent running inside a multi-user agent platform that supports both normal conversations and long-running tasks.",
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	producer, err := s.rbs.AcquireProducer(ctx, sessionId.Hex())
-	if err != nil {
-		cancel()
-		return err
-	}
-	s.setLife(sessionId.Hex(), cancel)
-
+) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		defer s.cancel(sessionId.Hex())
+
+		r, err := s.getRunner(
+			user,
+			&AgentConfig{
+				Name:        schema.MainAgentName,
+				Description: "main agent",
+				Prompt:      "You are an AI agent running inside a multi-user agent platform that supports both normal conversations and long-running tasks.",
+			},
+		)
+		if err != nil {
+			_ = s.store.UpdateSession(
+				bson.M{"_id": sessionId},
+				bson.M{"$set": bson.M{"state": schema.SessionDone}},
+			)
+			return
+		}
 
 		message := msg
 
@@ -142,6 +151,10 @@ func (s *Service) newTurn(
 				return
 			}
 			if !next {
+				_ = s.store.UpdateSession(
+					bson.M{"_id": sessionId},
+					bson.M{"$set": bson.M{"state": schema.SessionDone}},
+				)
 				return
 			}
 
@@ -180,8 +193,6 @@ func (s *Service) newTurn(
 			message = buildInputRequiredMessage(obj.Wait)
 		}
 	}()
-
-	return nil
 }
 
 func (s *Service) run(
@@ -353,10 +364,25 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 		return nil
 	}
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		if !s.lifeExists(id) {
+			// 再次校验会话状态
+			objs, err := s.store.FindSession(bson.M{"_id": sessionId, "state": schema.SessionRunning})
+			if err != nil {
+				return err
+			}
+			if len(objs) == 0 {
+				return nil
+			}
+
+			ctx, producer, err := s.acquireProducer(id)
+			if err != nil {
+				return err
+			}
+
 			msg := &genai.Content{Role: genai.RoleUser, Parts: parts}
-			return s.newTurn(user, sessionId, msg)
+			s.newTurn(ctx, producer, user, sessionId, msg)
+			return nil
 		}
 		time.Sleep(time.Second * 3)
 	}

@@ -10,5 +10,13 @@ func sessionRoute(api *handler.Api, g *gin.RouterGroup) {
 	group := g.Group("/session")
 	group.Use(middleware.AuthMiddleware)
 
+	group.GET("", api.GetSessionList)
+	group.DELETE("/:id", api.DeleteSession)
+
 	group.GET("/:id/stream", api.Stream)
+
+	group.POST("/:id/message", api.Chat)
+	group.GET("/:id/message", api.GetChatMessages)
+	group.POST("/:id/input", api.InputRequired)
+	group.GET("/:id/input", api.WaitInputList)
 }

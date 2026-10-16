@@ -1,5 +1,10 @@
 package common
 
+import (
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+)
+
 var (
 	TokenKey  string
 	TokenSalt string
@@ -27,4 +32,18 @@ type Response struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    any    `json:"data"`
+}
+
+type Auth struct {
+	ID   int
+	Name string
+	jwt.RegisteredClaims
+}
+
+func GetAuth(c *gin.Context) *Auth {
+	v, exists := c.Get(AuthKey)
+	if !exists {
+		return &Auth{}
+	}
+	return v.(*Auth)
 }
