@@ -1,24 +1,21 @@
 package ringbuffer
 
-import (
-	"strings"
-	"sync/atomic"
-)
+import "sync/atomic"
 
 // RingBuffer is a bounded FIFO. Writers publish immutable chunks with CAS;
 // consumers keep independent read positions. Full buffers overwrite old chunks.
 // Storage is allocated in small segments as slots are first used.
 // RingBuffer must not be copied.
 type RingBuffer struct {
-	shard       *ringBufferShard
-	id          string
-	storage     atomic.Pointer[ringBufferStorage]
-	retired     atomic.Bool
-	written     atomic.Uint64
-	consumer    atomic.Pointer[ringBufferLease]
-	retainUntil atomic.Int64
-	producers   int // Lifecycle fields are protected by the shard lock.
-	idle        ringBufferLease
+	shard        *ringBufferShard
+	id           string
+	storage      atomic.Pointer[ringBufferStorage]
+	retired      atomic.Bool
+	written      atomic.Uint64
+	consumer     atomic.Pointer[ringBufferLease]
+	producers    int // Lifecycle fields are protected by the shard lock.
+	idleDeadline int64
+	idleIndex    int
 }
 
 type ringBufferStorage struct {
@@ -154,15 +151,15 @@ func (b *RingBuffer) next(after uint64) (SSEChunk, bool) {
 	if storage == nil {
 		return SSEChunk{}, false
 	}
-	for {
-		read, written := after, b.written.Load()
-		if read >= written {
-			return SSEChunk{}, false
-		}
-		if written-read > storage.capacity {
-			read = written - storage.capacity
-		}
-		sequence := read + 1
+	written := b.written.Load()
+	if after >= written {
+		return SSEChunk{}, false
+	}
+	if written-after > storage.capacity {
+		after = written - storage.capacity
+	}
+	for after < written {
+		sequence := after + 1
 		slot := storage.slot(sequence, false)
 		if slot == nil {
 			return SSEChunk{}, false
@@ -171,13 +168,52 @@ func (b *RingBuffer) next(after uint64) (SSEChunk, bool) {
 		if chunk == nil || chunk.Sequence != sequence {
 			// A ticket can precede publication. Its writer signals the consumer
 			// when published; overflow may advance past the pending ticket.
-			if b.written.Load()-read > storage.capacity {
+			if latest := b.written.Load(); latest-after > storage.capacity {
+				after = latest - storage.capacity
 				continue
 			}
 			return SSEChunk{}, false
 		}
-		return SSEChunk{Sequence: chunk.Sequence, Type: chunk.Type, Data: strings.Clone(chunk.Data)}, true
+		return *chunk, true
 	}
+	return SSEChunk{}, false
+}
+
+// available drains the readable prefix after an already claimed first chunk.
+// Bound the batch by a snapshot so continuous writes cannot keep a read running
+// indefinitely. An unpublished ticket ends the prefix; its writer will wake the
+// consumer after publication. Overflow keeps the existing sequence-gap policy.
+func (b *RingBuffer) available(first SSEChunk) []SSEChunk {
+	storage := b.storage.Load()
+	if storage == nil {
+		return []SSEChunk{first}
+	}
+	written := b.written.Load()
+	after := first.Sequence
+	if written-after > storage.capacity {
+		after = written - storage.capacity
+	}
+	chunks := make([]SSEChunk, 1, written-after+1)
+	chunks[0] = first
+	for after < written {
+		sequence := after + 1
+		var chunk *SSEChunk
+		if slot := storage.slot(sequence, false); slot != nil {
+			chunk = slot.Load()
+		}
+		if chunk == nil || chunk.Sequence != sequence {
+			// Skip overwritten slots, but stop at an unpublished ticket. The
+			// original upper bound keeps this loop finite under continuous writes.
+			if latest := b.written.Load(); latest-after > storage.capacity {
+				after = latest - storage.capacity
+				continue
+			}
+			break
+		}
+		chunks = append(chunks, *chunk)
+		after = chunk.Sequence
+	}
+	return chunks
 }
 
 func (b *RingBuffer) clear() {

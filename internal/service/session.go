@@ -1,8 +1,10 @@
 package service
 
 import (
+	"strconv"
 	"time"
 
+	"github.com/gin-contrib/sse"
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -59,10 +61,25 @@ func (s *Service) GetSession(user, id string) (*schema.Session, error) {
 	return objs[0], nil
 }
 
-func (s *Service) Stream(c *gin.Context, id string, index uint64) error {
-	consumer, err := s.rbs.AcquireConsumer(id, index)
+func (s *Service) Stream(c *gin.Context, id string, seq uint64) error {
+	ctx := c.Request.Context()
+
+	consumer, err := s.rbs.AcquireConsumer(ctx, id, seq)
 	if err != nil {
 		return err
 	}
 
+	for {
+		chunks, err := consumer.Next(ctx)
+		if err != nil {
+			return err
+		}
+		for _, chunk := range chunks {
+			c.Render(-1, sse.Event{
+				Event: string(chunk.Type),
+				Id:    strconv.FormatUint(chunk.Sequence, 10),
+				Data:  chunk.Data,
+			})
+		}
+	}
 }

@@ -1,7 +1,6 @@
 package ringbuffer
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"sync/atomic"
@@ -21,7 +20,6 @@ type ringBufferLeaseKind uint8
 const (
 	ringBufferProducerLease ringBufferLeaseKind = iota
 	ringBufferConsumerLease
-	ringBufferIdleLease
 )
 
 var (
@@ -34,17 +32,17 @@ var (
 	ErrRingBufferInvalidChunk  = errors.New("invalid SSE chunk type or payload")
 )
 
-type SSEChunkType uint8
+type SSEChunkType string
 
 const (
-	SSEChunkTypeData SSEChunkType = iota
-	SSEChunkTypeReasoning
-	SSEChunkTypeEnd            // Ends a complete logical chunk; Data must be empty.
-	SSEChunkTypeHumanInTheLoop // Requests human intervention; Data may carry details.
+	SSEChunkTypeData           SSEChunkType = "content"
+	SSEChunkTypeReasoning      SSEChunkType = "reasoning"
+	SSEChunkTypeEnd            SSEChunkType = "end"  // Ends a complete logical chunk; Data must be empty.
+	SSEChunkTypeHumanInTheLoop SSEChunkType = "hitl" // Requests human intervention; Data may carry details.
 )
 
-// SSEChunk holds opaque SSE bytes. Sequence starts at 1 per buffer. Each read
-// owns a copy of Data, leaving retained chunks immutable for reconnection.
+// SSEChunk holds opaque SSE bytes. Sequence starts at 1 per buffer. Reads return
+// independent values sharing immutable Data strings with retained chunks.
 // Overwriting old chunks can create gaps in delivered sequences.
 type SSEChunk struct {
 	Sequence uint64
@@ -65,19 +63,17 @@ func (e HITLEvent) ToData() string {
 type ringBufferLease struct {
 	buffer *RingBuffer
 	kind   ringBufferLeaseKind
-	// Heap metadata is protected by the shard lock; hot-path renewals do not
-	// change it. The reaper checks the atomic state when this deadline arrives.
-	deadline int64
-	index    int
-	// Active values are monotonic nanosecond deadlines relative to manager.start.
-	// Inactive values have the high bit set. Renew and expiry CAS this same word
-	// so a stale expiry decision cannot discard a completed renewal.
+	// Active leases form a list for manager shutdown only, outside the expiry
+	// heap. Links and stopCancel are protected by the shard lock.
+	prev, next *ringBufferLease
+	// Zero means connected; terminal states cannot be renewed.
 	state      atomic.Uint64
-	ctx        context.Context
+	canceled   <-chan struct{}
 	stopCancel func() bool   // Protected by the shard lock.
 	wake       chan struct{} // Coalesced consumer notifications; never closed.
 	done       chan struct{}
 	reading    atomic.Bool
+	waiting    atomic.Bool // Producers only notify a consumer preparing to park.
 }
 
 const (
@@ -96,13 +92,5 @@ func ringBufferLeaseError(state uint64) error {
 		return ErrRingBufferManagerClosed
 	default:
 		return nil
-	}
-}
-
-func ringBufferExtend(deadline *atomic.Int64, value int64) {
-	for old := deadline.Load(); old < value; old = deadline.Load() {
-		if deadline.CompareAndSwap(old, value) {
-			return
-		}
 	}
 }

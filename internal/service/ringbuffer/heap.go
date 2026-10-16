@@ -1,24 +1,25 @@
 package ringbuffer
 
-type ringBufferLeaseHeap []*ringBufferLease
+// Only disconnected buffers are scheduled for expiry.
+type ringBufferHeap []*RingBuffer
 
-func (h ringBufferLeaseHeap) Len() int           { return len(h) }
-func (h ringBufferLeaseHeap) Less(i, j int) bool { return h[i].deadline < h[j].deadline }
-func (h ringBufferLeaseHeap) Swap(i, j int) {
+func (h ringBufferHeap) Len() int           { return len(h) }
+func (h ringBufferHeap) Less(i, j int) bool { return h[i].idleDeadline < h[j].idleDeadline }
+func (h ringBufferHeap) Swap(i, j int) {
 	h[i], h[j] = h[j], h[i]
-	h[i].index, h[j].index = i, j
+	h[i].idleIndex, h[j].idleIndex = i, j
 }
-func (h *ringBufferLeaseHeap) Push(v any) {
-	lease := v.(*ringBufferLease)
-	lease.index = len(*h)
-	*h = append(*h, lease)
+func (h *ringBufferHeap) Push(v any) {
+	b := v.(*RingBuffer)
+	b.idleIndex = len(*h)
+	*h = append(*h, b)
 }
-func (h *ringBufferLeaseHeap) Pop() any {
+func (h *ringBufferHeap) Pop() any {
 	old := *h
 	n := len(old) - 1
-	lease := old[n]
+	b := old[n]
 	old[n] = nil
-	lease.index = -1
+	b.idleIndex = -1
 	*h = old[:n]
-	return lease
+	return b
 }

@@ -8,12 +8,21 @@ import (
 type ringBufferShard struct {
 	mu      sync.Mutex
 	buffers map[string]*RingBuffer
-	expires ringBufferLeaseHeap
+	leases  *ringBufferLease
+	expires ringBufferHeap
 }
 
-// endLease requires the shard lock and an already-inactive lease state.
-func (s *ringBufferShard) endLease(lease *ringBufferLease, idleDeadline int64) {
-	heap.Remove(&s.expires, lease.index)
+// endLease requires the shard lock and an already-disconnected lease state.
+func (s *ringBufferShard) endLease(lease *ringBufferLease, now int64) {
+	if lease.prev != nil {
+		lease.prev.next = lease.next
+	} else {
+		s.leases = lease.next
+	}
+	if lease.next != nil {
+		lease.next.prev = lease.prev
+	}
+	lease.prev, lease.next = nil, nil
 	if lease.stopCancel != nil {
 		lease.stopCancel()
 		lease.stopCancel = nil
@@ -25,70 +34,27 @@ func (s *ringBufferShard) endLease(lease *ringBufferLease, idleDeadline int64) {
 	} else {
 		b.producers--
 	}
-	ringBufferExtend(&b.retainUntil, idleDeadline)
 	if b.producers == 0 && b.consumer.Load() == nil {
-		b.idle.deadline = b.retainUntil.Load()
-		heap.Push(&s.expires, &b.idle)
+		b.idleDeadline = now + int64(RingBufferLeaseTTL)
+		heap.Push(&s.expires, b)
 	}
 }
 
-// expire requires the shard lock. Renewed leases are rescheduled lazily.
-func (s *ringBufferShard) expire(lease *ringBufferLease, now int64) {
-	if lease.kind == ringBufferIdleLease {
-		if until := lease.buffer.retainUntil.Load(); until > lease.deadline {
-			lease.deadline = until
-			heap.Fix(&s.expires, lease.index)
-		}
-		if lease.deadline > now {
-			return
-		}
-		heap.Remove(&s.expires, lease.index)
-		b := lease.buffer
-		delete(s.buffers, b.id)
-		b.clear()
-		if len(s.buffers) == 0 {
-			s.buffers, s.expires = nil, nil
-		}
-		return
-	}
-	for {
-		state := lease.state.Load()
-		if ringBufferLeaseError(state) != nil {
-			return
-		}
-		if lease.kind == ringBufferProducerLease {
-			if lease.ctx != nil && lease.ctx.Err() != nil {
-				lease.state.Store(ringBufferLeaseClosed)
-				s.endLease(lease, now+int64(RingBufferLeaseTTL))
-				return
-			}
-			// The connection is still live. A stopped scheduler or long Push pause
-			// must not expire it; renew from the current monotonic time.
-			if int64(state) <= now {
-				deadline := now + int64(RingBufferLeaseTTL)
-				if !lease.state.CompareAndSwap(state, uint64(deadline)) {
-					continue
-				}
-				ringBufferExtend(&lease.buffer.retainUntil, deadline)
-				state = uint64(deadline)
-			}
-		} else if int64(state) <= now {
-			if !lease.state.CompareAndSwap(state, ringBufferLeaseExpired) {
-				continue
-			}
-			s.endLease(lease, int64(state))
-			return
-		}
-		lease.deadline = int64(state)
-		heap.Fix(&s.expires, lease.index)
-		return
+// expire removes an idle buffer under the shard lock. Reconnecting removes it
+// from the heap first, so live connections require no periodic maintenance.
+func (s *ringBufferShard) expire(b *RingBuffer) {
+	heap.Remove(&s.expires, b.idleIndex)
+	delete(s.buffers, b.id)
+	b.clear()
+	if len(s.buffers) == 0 {
+		s.buffers, s.expires = nil, nil
 	}
 }
 
-// reapExpired bounds each lock hold and reports any remaining due events.
+// reapExpired bounds each lock hold and reports any remaining due buffers.
 func (s *ringBufferShard) reapExpired(now int64, limit int) bool {
-	for n := 0; n < limit && len(s.expires) > 0 && s.expires[0].deadline <= now; n++ {
-		s.expire(s.expires[0], now)
+	for n := 0; n < limit && len(s.expires) > 0 && s.expires[0].idleDeadline <= now; n++ {
+		s.expire(s.expires[0])
 	}
-	return len(s.expires) > 0 && s.expires[0].deadline <= now
+	return len(s.expires) > 0 && s.expires[0].idleDeadline <= now
 }

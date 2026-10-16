@@ -95,6 +95,13 @@ func (a *Api) Stream(c *gin.Context) {
 	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 
+	err := a.srv.Stream(c, sessionId, req.Seq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("stream: %v", err),
+		})
+	}
 }
 
 func (a *Api) Chat(c *gin.Context) {
