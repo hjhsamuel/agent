@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/hjhsamuel/agent/internal/service/adapter"
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store"
 	"github.com/hjhsamuel/agent/internal/tool"
@@ -11,10 +12,11 @@ import (
 )
 
 type Service struct {
-	store *store.Store
-	kms   *kms.KMS
-	tool  *tool.Factory // 全局可用的工具、subagent
-	rbs   *ringbuffer.RingBufferManager
+	store      *store.Store
+	kms        *kms.KMS
+	tool       *tool.Factory // 全局可用的工具、subagent
+	rbs        *ringbuffer.RingBufferManager
+	adkSession *adapter.SessionService
 
 	life sync.Map
 	wg   sync.WaitGroup

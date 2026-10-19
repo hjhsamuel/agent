@@ -105,11 +105,61 @@ func (a *Api) Stream(c *gin.Context) {
 }
 
 func (a *Api) Chat(c *gin.Context) {
-	// TODO
+	var req schema.ChatReq
+	_ = c.ShouldBindJSON(&req)
+
+	if req.ID == "" || req.Content == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id and content are required",
+		})
+		return
+	}
+
+	auth := common.GetAuth(c)
+
+	name, err := a.srv.Run(strconv.Itoa(auth.ID), req.ID, req.Content)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("chat: %v", err),
+		})
+		return
+	}
+
+	rsp := &common.Response{
+		Code: http.StatusOK,
+	}
+	if name == "" {
+		rsp.Data = name
+	}
+	c.JSON(http.StatusOK, rsp)
 }
 
 func (a *Api) InputRequired(c *gin.Context) {
-	// TODO
+	var req schema.InputRequiredReq
+	_ = c.ShouldBindJSON(&req)
+	if req.ID == "" || req.CallID == "" || req.Content == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id, call_id and content are required",
+		})
+		return
+	}
+
+	auth := common.GetAuth(c)
+
+	err := a.srv.SetInputRequiredInfo(strconv.Itoa(auth.ID), req.ID, req.CallID, req.Content)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("set input required: %v", err),
+		})
+	} else {
+		c.JSON(http.StatusOK, &common.Response{
+			Code: http.StatusOK,
+		})
+	}
 }
 
 func (a *Api) GetChatMessages(c *gin.Context) {

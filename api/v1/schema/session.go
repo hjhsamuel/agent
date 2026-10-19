@@ -22,3 +22,14 @@ type StreamReq struct {
 	ID  string `form:"id"`  // 会话 id
 	Seq uint64 `form:"seq"` // sse chunk id
 }
+
+type ChatReq struct {
+	ID      string `uri:"id"`       // 会话 id
+	Content string `json:"content"` // 对话消息
+}
+
+type InputRequiredReq struct {
+	ID      string `uri:"id"`       // 会话 id
+	CallID  string `json:"call_id"` // 任务 id
+	Content string `json:"content"` // 用户补充内容
+}

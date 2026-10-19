@@ -19,7 +19,8 @@ type AgentConfig struct {
 	Prompt      string
 
 	// Optional
-	SubAgents []agent.Agent
+	SubAgents   []agent.Agent
+	DisableTool bool
 }
 
 type Tool struct {

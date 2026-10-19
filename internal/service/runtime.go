@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hjhsamuel/agent/internal/service/adapter"
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -60,7 +59,7 @@ func (s *Service) getRunner(user string, cfg *AgentConfig) (*runner.Runner, erro
 	return runner.New(runner.Config{
 		AppName:           schema.MainAgentName,
 		Agent:             agt,
-		SessionService:    adapter.NewSessionService(s.store),
+		SessionService:    s.adkSession,
 		AutoCreateSession: true,
 		Compaction: &compaction.Config{
 			TokenThreshold:     int(float64(opts.ContextLimit) * CompactRatio),
@@ -84,15 +83,50 @@ func (s *Service) acquireProducer(id string) (context.Context, *ringbuffer.RingB
 	return ctx, producer, nil
 }
 
-func (s *Service) Run(user, id string, content string) error {
+func (s *Service) Run(user, id string, content string) (string, error) {
 	sessionId, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		return errors.New("invalid session")
+		return "", errors.New("invalid session")
+	}
+
+	objs, err := s.store.FindSession(bson.M{
+		"_id":   sessionId,
+		"user":  user,
+		"state": bson.M{"$in": []schema.SessionStatus{schema.SessionDone, schema.SessionTemp}},
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(objs) == 0 {
+		return "", errors.New("session not found")
 	}
 
 	ctx, producer, err := s.acquireProducer(sessionId.Hex())
 	if err != nil {
-		return err
+		return "", err
+	}
+
+	filter := bson.M{
+		"_id": sessionId,
+	}
+	updates := bson.M{
+		"$set": bson.M{
+			"state":      schema.SessionRunning,
+			"updated_at": time.Now(),
+		},
+	}
+	var topic string
+	if objs[0].State == schema.SessionTemp {
+		filter["message_seq"] = 1
+		filter["state"] = schema.SessionTemp
+
+		topic, err = s.ExtractSessionTopic(content)
+		if err == nil {
+			topic = "新对话"
+		}
+		updates["name"] = topic
+	} else {
+		filter["state"] = schema.SessionDone
 	}
 
 	// 多轮对话、首次对话
@@ -102,17 +136,17 @@ func (s *Service) Run(user, id string, content string) error {
 			"state": bson.M{"$in": []schema.SessionStatus{schema.SessionDone, schema.SessionTemp}},
 			"user":  user,
 		},
-		bson.M{"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()}},
+		updates,
 	)
 	if err != nil {
 		s.cancel(sessionId.Hex())
-		return err
+		return "", err
 	}
 
 	msg := genai.NewContentFromText(content, genai.RoleUser)
 	s.newTurn(ctx, producer, user, sessionId, msg)
 
-	return nil
+	return topic, nil
 }
 
 func (s *Service) newTurn(

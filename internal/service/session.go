@@ -1,15 +1,20 @@
 package service
 
 import (
+	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/sse"
 	"github.com/gin-gonic/gin"
+	"github.com/hjhsamuel/agent/internal/service/prompts"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"google.golang.org/adk/v2/model"
+	"google.golang.org/genai"
 )
 
 func (s *Service) GetSessionList(user string, offset string, limit int) ([]*schema.Session, error) {
@@ -82,4 +87,40 @@ func (s *Service) Stream(c *gin.Context, id string, seq uint64) error {
 			})
 		}
 	}
+}
+
+func (s *Service) ExtractSessionTopic(content string) (string, error) {
+	_, llmModel, err := s.randomModel(schema.ChatModel)
+	if err != nil {
+		return "", err
+	}
+
+	response := llmModel.GenerateContent(
+		context.Background(),
+		&model.LLMRequest{
+			Contents: []*genai.Content{
+				{Role: "system", Parts: []*genai.Part{{Text: prompts.SessionTopicSystemPrompt}}},
+				{Role: "user", Parts: []*genai.Part{{Text: content}}},
+			},
+		},
+		false,
+	)
+
+	var b strings.Builder
+	for item, err := range response {
+		if err != nil {
+			return "", err
+		}
+		if item == nil || item.Content == nil || len(item.Content.Parts) == 0 {
+			continue
+		}
+
+		for _, elem := range item.Content.Parts {
+			if elem == nil || elem.Text == "" {
+				continue
+			}
+			b.WriteString(elem.Text)
+		}
+	}
+	return b.String(), nil
 }
