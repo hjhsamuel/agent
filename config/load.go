@@ -41,7 +41,7 @@ func Init() error {
 	if err := setLog(); err != nil {
 		return err
 	}
-	if err := setServer(); err != nil {
+	if err := setSecret(); err != nil {
 		return err
 	}
 	if err := setStorage(); err != nil {

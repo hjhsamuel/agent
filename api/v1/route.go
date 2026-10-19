@@ -11,4 +11,6 @@ func Route(srv *service.Service, g *gin.RouterGroup) {
 	group := g.Group("/v1")
 
 	sessionRoute(api, group)
+	modelRoute(api, group)
+	secretRoute(api, group)
 }

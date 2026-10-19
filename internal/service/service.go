@@ -18,7 +18,7 @@ import (
 type Service struct {
 	store      *store.Store
 	kms        *kms.KMS
-	tool       *tool.Factory // 全局可用的工具、subagent
+	tool       *tool.Factory // 全局可用的工具、subagent、skills
 	rbs        *ringbuffer.RingBufferManager
 	adkSession session.Service
 
@@ -28,6 +28,7 @@ type Service struct {
 
 func (s *Service) Start() error {
 	// TODO
+	return nil
 }
 
 func (s *Service) Close() {
@@ -69,10 +70,13 @@ func NewService() (*Service, error) {
 	// kms
 	secrets := kms.NewKMS()
 	for _, item := range c.Secret {
-		secrets.SetKey(&kms.KeySet{
+		err := secrets.SetKey(&kms.KeySet{
 			Version: int64(item.Version),
 			Key:     item.Key,
 		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	s.kms = secrets
 

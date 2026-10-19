@@ -1,7 +1,10 @@
 package kms
 
 import (
+	"crypto/rand"
 	"errors"
+	"fmt"
+	"io"
 	"sync"
 )
 
@@ -9,6 +12,27 @@ type KMS struct {
 	lock   sync.RWMutex
 	keys   map[int64]string
 	latest int64
+}
+
+func (k *KMS) GenerateKey() (int64, string, error) {
+	key := make([]byte, KeyLength)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		return 0, "", err
+	}
+
+	k.lock.Lock()
+	defer k.lock.Unlock()
+
+	version := k.latest + 1
+	err := k.SetKey(&KeySet{
+		Version: version,
+		Key:     string(key),
+	})
+	if err != nil {
+		return 0, "", err
+	}
+
+	return version, string(key), nil
 }
 
 func (k *KMS) GetKey(version int64) (string, error) {
@@ -35,18 +59,23 @@ func (k *KMS) GetLatestKey() (string, error) {
 	return "", errors.New("latest key not set")
 }
 
-func (k *KMS) SetKey(keys ...*KeySet) {
+func (k *KMS) SetKey(keys ...*KeySet) error {
 	k.lock.Lock()
 	defer k.lock.Unlock()
 
 	latest := k.latest
 	for _, item := range keys {
+		if _, ok := k.keys[item.Version]; ok {
+			return fmt.Errorf("kms: version %d already exists", item.Version)
+		}
 		k.keys[item.Version] = item.Key
 		if item.Version > latest {
 			latest = item.Version
 		}
 	}
 	k.latest = latest
+
+	return nil
 }
 
 func (k *KMS) Decrypt(version int64, ciphertext, nonce []byte) (string, error) {
