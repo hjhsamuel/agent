@@ -1,4 +1,4 @@
-package skill
+package skillx
 
 type Frontmatter struct {
 	Name        string `yaml:"name"`

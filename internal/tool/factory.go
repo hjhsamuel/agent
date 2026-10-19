@@ -1,23 +1,31 @@
 package tool
 
 import (
+	"context"
+
 	"github.com/hjhsamuel/agent/internal/tool/a2ax"
 	"github.com/hjhsamuel/agent/internal/tool/local"
 	"github.com/hjhsamuel/agent/internal/tool/mcpx"
+	"github.com/hjhsamuel/agent/internal/tool/skillx"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/skilltoolset"
+	"google.golang.org/adk/v2/tool/skilltoolset/skill"
 )
 
 type Factory struct {
 	localTools   []tool.Tool
 	mcpTransport []mcp.Transport
 	a2aAgent     []agent.Agent
+	skillSource  skill.Source
 }
 
 func (f *Factory) init() {
 	// local tool
 	f.localTools = local.GetTools()
+
+	f.skillSource = skillx.NewSkillSource()
 }
 
 func (f *Factory) AddMcp(path string) error {
@@ -48,6 +56,13 @@ func (f *Factory) All(user string) *Pack {
 			continue
 		}
 		pack.Toolsets = append(pack.Toolsets, ts)
+	}
+
+	if f.skillSource != nil {
+		skillToolset, err := skilltoolset.New(context.Background(), skilltoolset.Config{Source: f.skillSource})
+		if err == nil {
+			pack.Toolsets = append(pack.Toolsets, skillToolset)
+		}
 	}
 
 	return &pack
