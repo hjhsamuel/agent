@@ -4,13 +4,18 @@ go 1.27
 
 require (
 	github.com/a2aproject/a2a-go/v2 v2.5.0
+	github.com/bombsimon/logrusr/v4 v4.2.0
+	github.com/gin-contrib/sse v1.1.2
 	github.com/gin-gonic/gin v1.12.0
-	github.com/google/go-cmp v0.7.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/joho/godotenv v1.5.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/openai/openai-go/v3 v3.76.0
+	github.com/sirupsen/logrus v1.10.2
 	go.mongodb.org/mongo-driver/v2 v2.9.2
 	google.golang.org/adk/v2 v2.5.0
 	google.golang.org/genai v1.71.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -27,7 +32,6 @@ require (
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
-	github.com/gin-contrib/sse v1.1.2 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -35,6 +39,7 @@ require (
 	github.com/go-playground/validator/v10 v10.30.1 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/safehtml v0.1.0 // indirect
