@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/api"
+	"github.com/hjhsamuel/agent/api/common"
 	"github.com/hjhsamuel/agent/config"
 	"github.com/hjhsamuel/agent/internal/service"
 	"github.com/sirupsen/logrus"
@@ -63,9 +64,13 @@ func startWeb(srv *service.Service) (*http.Server, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(gin.Logger())
 	api.Route(srv, r)
 
 	c := config.GetConfig()
+
+	common.SetTokenKey(c.Server.Header)
+	common.SetTokenSalt(c.Server.Salt)
 
 	httpSrv := http.Server{
 		Addr:    net.JoinHostPort(c.Server.Host, strconv.Itoa(c.Server.Port)),

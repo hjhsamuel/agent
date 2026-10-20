@@ -24,13 +24,11 @@ func (k *KMS) GenerateKey() (int64, string, error) {
 	defer k.lock.Unlock()
 
 	version := k.latest + 1
-	err := k.SetKey(&KeySet{
-		Version: version,
-		Key:     string(key),
-	})
-	if err != nil {
-		return 0, "", err
+	if _, ok := k.keys[version]; ok {
+		return 0, "", fmt.Errorf("kms: version %d already exists", version)
 	}
+	k.keys[version] = string(key)
+	k.latest = version
 
 	return version, string(key), nil
 }

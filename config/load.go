@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ var gConf = &Config{
 		Port: 8080,
 	},
 	Log: &LogConfig{
-		Path:   "/app/logs/cagent.log",
+		Path:   "logs/cagent.log",
 		Level:  "info",
 		Size:   50,
 		Backup: 3,
@@ -186,6 +187,7 @@ func initLog() error {
 	}
 
 	if gConf.Log.Path != "" {
+		_ = os.MkdirAll(filepath.Dir(gConf.Log.Path), os.ModePerm)
 		logrus.SetOutput(&lumberjack.Logger{
 			Filename:   gConf.Log.Path,
 			MaxSize:    gConf.Log.Size,
