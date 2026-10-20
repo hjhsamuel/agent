@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/api/common"
 	"github.com/hjhsamuel/agent/api/v1/schema"
+	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 )
 
 func (a *Api) GetSessionList(c *gin.Context) {
@@ -94,6 +95,11 @@ func (a *Api) Stream(c *gin.Context) {
 	c.Writer.Header().Set("Transfer-Encoding", "chunked")
 	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
+
+	if req.ID == "" {
+		c.SSEvent(string(ringbuffer.SSEChunkTypeNew), sessionId)
+		c.Writer.Flush()
+	}
 
 	err := a.srv.Stream(c, sessionId, req.Seq)
 	if err != nil {
