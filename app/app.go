@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/api"
 	"github.com/hjhsamuel/agent/api/common"
+	"github.com/hjhsamuel/agent/api/common/middleware"
 	"github.com/hjhsamuel/agent/config"
 	"github.com/hjhsamuel/agent/internal/service"
 	"github.com/sirupsen/logrus"
@@ -64,7 +65,7 @@ func startWeb(srv *service.Service) (*http.Server, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(gin.Logger())
+	r.Use(middleware.RequestLogger)
 	api.Route(srv, r)
 
 	c := config.GetConfig()
