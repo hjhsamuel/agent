@@ -90,6 +90,11 @@ func (a *Api) Stream(c *gin.Context) {
 
 	err := a.srv.Stream(c, sessionId, req.Seq)
 	if err != nil {
+		if c.Writer.Written() {
+			// Once SSE starts, a JSON response would corrupt the event stream.
+			_ = c.Error(err)
+			return
+		}
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
 			Message: fmt.Sprintf("stream: %v", err),

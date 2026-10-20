@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	MainAgentName = "root"
+	MainAgentName = "CAGENT"
 )
 
 const AgentGroupCollection = "agent_group"

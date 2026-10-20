@@ -74,6 +74,7 @@ func (s *Service) Stream(c *gin.Context, id string, seq uint64) error {
 	if err != nil {
 		return err
 	}
+	defer consumer.Close()
 
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -97,6 +98,7 @@ func (s *Service) Stream(c *gin.Context, id string, seq uint64) error {
 				Data:  chunk.Data,
 			})
 		}
+		c.Writer.Flush()
 	}
 }
 
