@@ -126,6 +126,14 @@ func (s *Service) Run(user, id string, content string) error {
 		return err
 	}
 
+	// 添加消息
+	_ = s.store.AddMessage(&schema.Message{
+		Session:   sessionId,
+		Role:      schema.RoleUser,
+		Content:   content,
+		CreatedAt: time.Now(),
+	})
+
 	msg := genai.NewContentFromText(content, genai.RoleUser)
 	s.wg.Add(1)
 	go s.newTurn(ctx, producer, user, sessionId, msg, obj.State == schema.SessionTemp)
