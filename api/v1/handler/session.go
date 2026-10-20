@@ -61,7 +61,6 @@ func (a *Api) DeleteSession(c *gin.Context) {
 
 func (a *Api) Stream(c *gin.Context) {
 	var req schema.StreamReq
-	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindQuery(&req)
 
 	auth := common.GetAuth(c)

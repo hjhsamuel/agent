@@ -13,7 +13,7 @@ func sessionRoute(api *handler.Api, g *gin.RouterGroup) {
 	group.GET("", api.GetSessionList)
 	group.DELETE("/:id", api.DeleteSession)
 
-	group.GET("/:id/stream", api.Stream)
+	group.GET("/stream", api.Stream)
 
 	group.POST("/:id/message", api.Chat)
 	group.GET("/:id/message", api.GetChatMessages)
