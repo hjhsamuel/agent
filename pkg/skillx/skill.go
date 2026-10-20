@@ -12,6 +12,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func init() {
+	_ = os.MkdirAll("skills", os.ModePerm)
+}
+
 var (
 	frontmatterSeparator    = []byte("---\n")
 	frontmatterSeparatorWin = []byte("---\r\n")

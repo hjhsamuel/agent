@@ -9,6 +9,7 @@ import (
 	"github.com/gin-contrib/sse"
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/internal/service/prompts"
+	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -73,6 +74,16 @@ func (s *Service) Stream(c *gin.Context, id string, seq uint64) error {
 	if err != nil {
 		return err
 	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("Transfer-Encoding", "chunked")
+	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+
+	c.SSEvent(string(ringbuffer.SSEChunkTypeInit), id)
+	c.Writer.Flush()
 
 	for {
 		chunks, err := consumer.Next(ctx)

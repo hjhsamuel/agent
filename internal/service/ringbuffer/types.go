@@ -35,7 +35,7 @@ var (
 type SSEChunkType string
 
 const (
-	SSEChunkTypeNew            SSEChunkType = "new"
+	SSEChunkTypeInit           SSEChunkType = "init"
 	SSEChunkTypeData           SSEChunkType = "content"
 	SSEChunkTypeReasoning      SSEChunkType = "reasoning"
 	SSEChunkTypeEnd            SSEChunkType = "end"  // Ends a complete logical chunk; Data must be empty.

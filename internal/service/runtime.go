@@ -10,6 +10,7 @@ import (
 
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
+	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"google.golang.org/adk/v2/agent"
@@ -156,6 +157,7 @@ func (s *Service) newTurn(
 			bson.M{"_id": sessionId},
 			bson.M{"$set": bson.M{"state": schema.SessionDone}},
 		)
+		logrus.WithField("Session", sessionId).WithError(err).Error("create agent")
 		return
 	}
 
@@ -172,6 +174,7 @@ func (s *Service) newTurn(
 	for {
 		next, err := s.run(ctx, user, sessionId, r, producer, message)
 		if err != nil {
+			logrus.WithField("Session", sessionId).WithError(err).Error("run agent")
 			return
 		}
 		if !next {
