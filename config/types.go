@@ -10,10 +10,11 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	ID   string // 服务 id
-	Host string // 服务地址
-	Port int    // 监听端口
-	Salt string // token 密钥
+	ID     string // 服务 id
+	Host   string // 服务地址
+	Port   int    // 监听端口
+	Header string // header
+	Salt   string // token 密钥
 }
 
 type LogConfig struct {

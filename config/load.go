@@ -73,6 +73,11 @@ func setServer() error {
 		gConf.Server.Port = port
 	}
 
+	if v := os.Getenv("CAGENT_SERVER_HEADER"); v != "" {
+		gConf.Server.Header = v
+	} else {
+		return errors.New("missing env: CAGENT_SERVER_HEADER")
+	}
 	if v := os.Getenv("CAGENT_SERVER_SALT"); v != "" {
 		gConf.Server.Salt = v
 	} else {
