@@ -59,7 +59,7 @@ func (s *Service) getRunner(user string, cfg *AgentConfig) (*runner.Runner, erro
 	}
 
 	return runner.New(runner.Config{
-		AppName:           schema.MainAgentName,
+		AppName:           schema.RunnerName,
 		Agent:             agt,
 		SessionService:    s.adkSession,
 		AutoCreateSession: true,

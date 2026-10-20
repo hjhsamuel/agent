@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	MainAgentName = "CAGENT"
+	MainAgentName = "cagent"
+	RunnerName    = "CAGENT"
 )
 
 const AgentGroupCollection = "agent_group"
