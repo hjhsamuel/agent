@@ -12,7 +12,7 @@ const (
 )
 
 type Model struct {
-	ID       bson.ObjectID `bson:"id"`
+	ID       bson.ObjectID `bson:"_id,omitempty"`
 	Provider string        `bson:"provider"` // 供应商名称
 	Name     string        `bson:"name"`     // 模型名称
 	Url      string        `bson:"url"`
