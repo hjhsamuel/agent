@@ -92,6 +92,7 @@ func (a *Api) UpdateModel(c *gin.Context) {
 
 func (a *Api) AddApiKey(c *gin.Context) {
 	var req schema.AddApiKeyReq
+	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindJSON(&req)
 
 	if req.ID == "" {

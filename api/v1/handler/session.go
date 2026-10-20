@@ -61,6 +61,7 @@ func (a *Api) DeleteSession(c *gin.Context) {
 
 func (a *Api) Stream(c *gin.Context) {
 	var req schema.StreamReq
+	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindQuery(&req)
 
 	auth := common.GetAuth(c)
@@ -106,6 +107,7 @@ func (a *Api) Stream(c *gin.Context) {
 
 func (a *Api) Chat(c *gin.Context) {
 	var req schema.ChatReq
+	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindJSON(&req)
 
 	if req.ID == "" || req.Content == "" {
@@ -138,6 +140,7 @@ func (a *Api) Chat(c *gin.Context) {
 
 func (a *Api) InputRequired(c *gin.Context) {
 	var req schema.InputRequiredReq
+	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindJSON(&req)
 	if req.ID == "" || req.CallID == "" || req.Content == "" {
 		c.JSON(http.StatusBadRequest, &common.Response{
