@@ -12,7 +12,7 @@ func (s *Service) GenerateSecret() (int64, error) {
 		return 0, err
 	}
 
-	err = filex.AppendFile(".env", fmt.Sprintf("CAGENT_SECRET_V%d=%s", version, key))
+	err = filex.AppendFile(".env", fmt.Sprintf("\nCAGENT_SECRET_V%d=%s\n", version, key))
 	if err != nil {
 		return 0, err
 	}

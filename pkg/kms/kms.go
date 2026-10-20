@@ -2,6 +2,7 @@ package kms
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -10,7 +11,7 @@ import (
 
 type KMS struct {
 	lock   sync.RWMutex
-	keys   map[int64]string
+	keys   map[int64][]byte
 	latest int64
 }
 
@@ -27,20 +28,32 @@ func (k *KMS) GenerateKey() (int64, string, error) {
 	if _, ok := k.keys[version]; ok {
 		return 0, "", fmt.Errorf("kms: version %d already exists", version)
 	}
-	k.keys[version] = string(key)
+	k.keys[version] = key
 	k.latest = version
 
-	return version, string(key), nil
+	encodedKey := base64.StdEncoding.EncodeToString(key)
+
+	return version, encodedKey, nil
 }
 
 func (k *KMS) GetKey(version int64) (string, error) {
+	key, err := k.getKey(version)
+	if err != nil {
+		return "", err
+	}
+
+	encodedKey := base64.StdEncoding.EncodeToString(key)
+	return encodedKey, nil
+}
+
+func (k *KMS) getKey(version int64) ([]byte, error) {
 	k.lock.RLock()
 	defer k.lock.RUnlock()
 
 	if v, ok := k.keys[version]; ok {
 		return v, nil
 	}
-	return "", errors.New("version not set")
+	return nil, errors.New("version not set")
 }
 
 func (k *KMS) GetLatestKey() (int64, string, error) {
@@ -51,7 +64,8 @@ func (k *KMS) GetLatestKey() (int64, string, error) {
 		return 0, "", errors.New("no version found")
 	}
 	if v, ok := k.keys[k.latest]; ok {
-		return k.latest, v, nil
+		encodedKey := base64.StdEncoding.EncodeToString(v)
+		return k.latest, encodedKey, nil
 	}
 
 	return 0, "", errors.New("latest key not set")
@@ -63,10 +77,9 @@ func (k *KMS) SetKey(keys ...*KeySet) error {
 
 	latest := k.latest
 	for _, item := range keys {
-		if _, ok := k.keys[item.Version]; ok {
-			return fmt.Errorf("kms: version %d already exists", item.Version)
+		if err := k.setKey(item); err != nil {
+			return err
 		}
-		k.keys[item.Version] = item.Key
 		if item.Version > latest {
 			latest = item.Version
 		}
@@ -76,22 +89,39 @@ func (k *KMS) SetKey(keys ...*KeySet) error {
 	return nil
 }
 
+func (k *KMS) setKey(item *KeySet) error {
+	key, err := base64.StdEncoding.DecodeString(item.Key)
+	if err != nil {
+		return err
+	}
+
+	if _, ok := k.keys[item.Version]; ok {
+		return fmt.Errorf("kms: version %d already exists", item.Version)
+	}
+	k.keys[item.Version] = key
+
+	return nil
+}
+
 func (k *KMS) Decrypt(version int64, ciphertext, nonce []byte) (string, error) {
-	key, err := k.GetKey(version)
+	key, err := k.getKey(version)
 	if err != nil {
 		return "", err
 	}
 
-	return Decrypt([]byte(key), ciphertext, nonce)
+	return Decrypt(key, ciphertext, nonce)
 }
 
 func (k *KMS) Encrypt(plaintext string) (*EncryptedValue, error) {
-	version, key, err := k.GetLatestKey()
-	if err != nil {
-		return nil, err
+	k.lock.RLock()
+	version := k.latest
+	key, ok := k.keys[k.latest]
+	k.lock.RUnlock()
+	if !ok {
+		return nil, errors.New("kms: key not set")
 	}
 
-	val, err := Encrypt([]byte(key), plaintext)
+	val, err := Encrypt(key, plaintext)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +132,6 @@ func (k *KMS) Encrypt(plaintext string) (*EncryptedValue, error) {
 
 func NewKMS() *KMS {
 	return &KMS{
-		keys: make(map[int64]string),
+		keys: make(map[int64][]byte),
 	}
 }
