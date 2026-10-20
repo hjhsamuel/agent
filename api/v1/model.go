@@ -12,6 +12,7 @@ func modelRoute(api *handler.Api, g *gin.RouterGroup) {
 
 	group.POST("", api.AddModel)
 	group.GET("", api.GetModels)
+	group.GET("/:id", api.GetModelInfo)
 	group.PUT("/:id", api.UpdateModel)
 
 	group.POST("/:id/key", api.AddApiKey)

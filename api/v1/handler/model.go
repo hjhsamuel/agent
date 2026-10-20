@@ -37,7 +37,8 @@ func (a *Api) AddModel(c *gin.Context) {
 		reasoningVal = req.Reasoning.Value
 	}
 
-	id, err := a.srv.AddModel(req.Provider, req.Name, req.Url, req.Type, req.ContextLimit, reasoningKey, reasoningVal)
+	modelId, err := a.srv.AddModel(req.Provider, req.Name, req.Url, req.Type, req.ContextLimit,
+		reasoningKey, reasoningVal)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
@@ -46,12 +47,42 @@ func (a *Api) AddModel(c *gin.Context) {
 	} else {
 		c.JSON(http.StatusOK, &common.Response{
 			Code: http.StatusOK,
-			Data: id,
+			Data: modelId,
 		})
 	}
 }
 
 func (a *Api) GetModels(c *gin.Context) {
+	groups, err := a.srv.GetModelGroups()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("get models: %v", err),
+		})
+		return
+	}
+
+	rsp := make([]*schema.GetModelsRsp, 0)
+	for _, item := range groups {
+		for _, elem := range item.Models {
+			info := &schema.GetModelsRsp{
+				ID:       elem.ID.Hex(),
+				Provider: item.Provider,
+				Name:     elem.Name,
+				Type:     elem.Type,
+				Enable:   elem.Enable,
+			}
+			rsp = append(rsp, info)
+		}
+	}
+
+	c.JSON(http.StatusOK, &common.Response{
+		Code: http.StatusOK,
+		Data: rsp,
+	})
+}
+
+func (a *Api) GetModelInfo(c *gin.Context) {
 	// TODO
 }
 
@@ -60,5 +91,34 @@ func (a *Api) UpdateModel(c *gin.Context) {
 }
 
 func (a *Api) AddApiKey(c *gin.Context) {
-	// TODO
+	var req schema.AddApiKeyReq
+	_ = c.ShouldBindJSON(&req)
+
+	if req.ID == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id is required",
+		})
+		return
+	}
+	if req.Key == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: key is required",
+		})
+		return
+	}
+
+	id, err := a.srv.AddApiKey(req.ID, req.Key, req.Weight)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("add api key: %v", err),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, &common.Response{
+		Code: http.StatusOK,
+		Data: id,
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand/v2"
 
+	"github.com/hjhsamuel/agent/internal/store/request"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -11,7 +12,7 @@ import (
 )
 
 func (d *Store) RandomModel(ctx context.Context, kind schema.ModelKind) (*schema.Model, error) {
-	modelFilter := bson.D{
+	filter := bson.D{
 		{Key: "type", Value: kind},
 		{Key: "enable", Value: true},
 		{Key: "api_keys", Value: bson.D{
@@ -23,34 +24,19 @@ func (d *Store) RandomModel(ctx context.Context, kind schema.ModelKind) (*schema
 			},
 		}},
 	}
-	filter := bson.D{
-		{Key: "enabled", Value: true},
-		{Key: "models", Value: bson.D{{Key: "$elemMatch", Value: modelFilter}}},
-	}
-	projection := bson.D{
-		{Key: "_id", Value: 0},
-		{Key: "models", Value: bson.D{{Key: "$elemMatch", Value: modelFilter}}},
-	}
-
-	result := d.getCollection(schema.ProviderCollection).FindOne(
+	result := d.getCollection(schema.ModelCollection).FindOne(
 		ctx,
 		filter,
-		options.FindOne().SetProjection(projection),
 	)
 
-	var provider schema.Provider
-	if err := result.Decode(&provider); err != nil {
+	var model schema.Model
+	if err := result.Decode(&model); err != nil {
 		return nil, err
 	}
 
-	if len(provider.Models) == 0 || provider.Models[0] == nil {
-		return nil, mongo.ErrNoDocuments
-	}
-	model := provider.Models[0]
-
 	var totalWeight int64
 	for _, key := range model.ApiKeys {
-		if key == nil || !key.Enable {
+		if key == nil || !key.Enable || key.Weight <= 0 {
 			continue
 		}
 		totalWeight += key.Weight
@@ -61,14 +47,109 @@ func (d *Store) RandomModel(ctx context.Context, kind schema.ModelKind) (*schema
 
 	ticket := rand.Int64N(totalWeight)
 	for _, key := range model.ApiKeys {
-		if key == nil || !key.Enable {
+		if key == nil || !key.Enable || key.Weight <= 0 {
 			continue
 		}
 		if ticket < key.Weight {
 			model.ApiKeys = []*schema.ApiKey{key}
-			return model, nil
+			return &model, nil
 		}
 		ticket -= key.Weight
 	}
 	return nil, mongo.ErrNoDocuments
+}
+
+func (d *Store) AddModel(modelObj *schema.Model) (bson.ObjectID, error) {
+	result, err := d.getCollection(schema.ModelCollection).InsertOne(context.Background(), modelObj)
+	if err != nil {
+		return bson.ObjectID{}, err
+	}
+	id := result.InsertedID.(bson.ObjectID)
+
+	return id, nil
+}
+
+func (d *Store) GroupModel() ([]*request.GroupModel, error) {
+	ctx := context.Background()
+	pipeline := mongo.Pipeline{
+		bson.D{{Key: "$sort", Value: bson.D{
+			{Key: "name", Value: 1},
+			{Key: "_id", Value: 1},
+		}}},
+		bson.D{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: "$provider"},
+			{Key: "models", Value: bson.D{{Key: "$push", Value: bson.D{
+				{Key: "id", Value: "$_id"},
+				{Key: "name", Value: "$name"},
+				{Key: "type", Value: "$type"},
+				{Key: "enable", Value: "$enable"},
+			}}}},
+		}}},
+		bson.D{{Key: "$project", Value: bson.D{
+			{Key: "_id", Value: 0},
+			{Key: "provider", Value: "$_id"},
+			{Key: "models", Value: 1},
+		}}},
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "provider", Value: 1}}}},
+	}
+	cursor, err := d.getCollection(schema.ModelCollection).Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	groups := make([]*request.GroupModel, 0)
+	if err = cursor.All(ctx, &groups); err != nil {
+		return nil, err
+	}
+	return groups, nil
+}
+
+func (d *Store) AddApiKey(id bson.ObjectID, obj *schema.ApiKey) (int64, error) {
+	nextID := bson.D{{Key: "$ifNull", Value: bson.A{"$seq", int64(1)}}}
+	update := mongo.Pipeline{
+		bson.D{
+			{
+				Key: "$set",
+				Value: bson.D{
+					{
+						Key:   "seq",
+						Value: bson.D{{Key: "$add", Value: bson.A{nextID, int64(1)}}},
+					},
+					{
+						Key: "api_keys",
+						Value: bson.D{
+							{
+								Key: "$concatArrays",
+								Value: bson.A{
+									bson.D{{Key: "$ifNull", Value: bson.A{"$api_keys", bson.A{}}}},
+									bson.A{bson.D{
+										{
+											Key: "$mergeObjects",
+											Value: bson.A{
+												bson.D{{Key: "$literal", Value: obj}},
+												bson.D{{Key: "id", Value: nextID}},
+											},
+										}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	result := d.getCollection(schema.ModelCollection).FindOneAndUpdate(
+		context.Background(),
+		bson.D{{Key: "_id", Value: id}},
+		update,
+		options.FindOneAndUpdate().SetProjection(bson.M{"seq": 1}),
+	)
+	var modelObj schema.Model
+	if err := result.Decode(&modelObj); err != nil {
+		return 0, err
+	}
+
+	return modelObj.Seq, nil
 }

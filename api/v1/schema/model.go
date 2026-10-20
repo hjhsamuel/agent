@@ -13,3 +13,17 @@ type KeyValue struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
+
+type GetModelsRsp struct {
+	ID       string `json:"id"`       // model id
+	Provider string `json:"provider"` // 供应商
+	Name     string `json:"name"`     // 模型
+	Type     string `json:"type"`     // 类型
+	Enable   bool   `json:"enable"`   // 是否可用
+}
+
+type AddApiKeyReq struct {
+	ID     string `uri:"id"`      // model id
+	Key    string `json:"key"`    // api key
+	Weight int64  `json:"weight"` // 权重
+}

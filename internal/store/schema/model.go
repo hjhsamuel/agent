@@ -2,7 +2,7 @@ package schema
 
 import "go.mongodb.org/mongo-driver/v2/bson"
 
-const ProviderCollection = "provider"
+const ModelCollection = "model"
 
 type ModelKind string
 
@@ -11,21 +11,16 @@ const (
 	EmbeddingModel ModelKind = "embedding"
 )
 
-type Provider struct {
-	ID       bson.ObjectID `bson:"_id,omitempty"`
-	Provider string        `bson:"provider"`
-	Models   []*Model      `bson:"models"`
-	Enabled  bool          `bson:"enabled"`
-}
-
 type Model struct {
-	ID      string      `bson:"id"`
-	Name    string      `bson:"name"`
-	Url     string      `bson:"url"`
-	Type    ModelKind   `bson:"type"`
-	ApiKeys []*ApiKey   `bson:"api_keys"`
-	Options ModelConfig `bson:"options"`
-	Enable  bool        `bson:"enable"`
+	ID       bson.ObjectID `bson:"id"`
+	Provider string        `bson:"provider"` // 供应商名称
+	Name     string        `bson:"name"`     // 模型名称
+	Url      string        `bson:"url"`
+	Type     ModelKind     `bson:"type"`
+	Seq      int64         `bson:"seq"`
+	ApiKeys  []*ApiKey     `bson:"api_keys"`
+	Options  ModelConfig   `bson:"options"`
+	Enable   bool          `bson:"enable"`
 }
 
 type ModelConfig struct {
@@ -34,7 +29,7 @@ type ModelConfig struct {
 }
 
 type ApiKey struct {
-	ID         string `bson:"id"`
+	ID         int64  `bson:"id"`
 	Version    int64  `bson:"version"`
 	Ciphertext []byte `bson:"ciphertext"`
 	Nonce      []byte `bson:"nonce"`

@@ -6,6 +6,7 @@ type KeySet struct {
 }
 
 type EncryptedValue struct {
+	Version    int64
 	Ciphertext []byte
 	Nonce      []byte
 }

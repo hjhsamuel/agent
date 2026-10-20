@@ -45,18 +45,18 @@ func (k *KMS) GetKey(version int64) (string, error) {
 	return "", errors.New("version not set")
 }
 
-func (k *KMS) GetLatestKey() (string, error) {
+func (k *KMS) GetLatestKey() (int64, string, error) {
 	k.lock.RLock()
 	defer k.lock.RUnlock()
 
 	if k.latest == 0 {
-		return "", errors.New("no version found")
+		return 0, "", errors.New("no version found")
 	}
 	if v, ok := k.keys[k.latest]; ok {
-		return v, nil
+		return k.latest, v, nil
 	}
 
-	return "", errors.New("latest key not set")
+	return 0, "", errors.New("latest key not set")
 }
 
 func (k *KMS) SetKey(keys ...*KeySet) error {
@@ -88,12 +88,18 @@ func (k *KMS) Decrypt(version int64, ciphertext, nonce []byte) (string, error) {
 }
 
 func (k *KMS) Encrypt(plaintext string) (*EncryptedValue, error) {
-	key, err := k.GetLatestKey()
+	version, key, err := k.GetLatestKey()
 	if err != nil {
 		return nil, err
 	}
 
-	return Encrypt([]byte(key), plaintext)
+	val, err := Encrypt([]byte(key), plaintext)
+	if err != nil {
+		return nil, err
+	}
+
+	val.Version = version
+	return val, nil
 }
 
 func NewKMS() *KMS {
