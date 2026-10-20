@@ -125,7 +125,7 @@ func (a *Api) Chat(c *gin.Context) {
 
 	auth := common.GetAuth(c)
 
-	name, err := a.srv.Run(strconv.Itoa(auth.ID), req.ID, req.Content)
+	err := a.srv.Run(strconv.Itoa(auth.ID), req.ID, req.Content)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
@@ -136,9 +136,6 @@ func (a *Api) Chat(c *gin.Context) {
 
 	rsp := &common.Response{
 		Code: http.StatusOK,
-	}
-	if name == "" {
-		rsp.Data = name
 	}
 	c.JSON(http.StatusOK, rsp)
 }

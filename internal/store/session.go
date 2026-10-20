@@ -85,8 +85,12 @@ func (d *Store) AddMessage(obj *schema.Message) error {
 	return nil
 }
 
-func (d *Store) FindOneAndUpdateSession(filter, update bson.M) (*schema.Session, error) {
-	result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(context.Background(), filter, update)
+func (d *Store) FindOneAndUpdateSession(
+	filter bson.M,
+	update bson.M,
+	opts ...options.Lister[options.FindOneAndUpdateOptions],
+) (*schema.Session, error) {
+	result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(context.Background(), filter, update, opts...)
 	if err := result.Err(); err != nil {
 		return nil, err
 	}

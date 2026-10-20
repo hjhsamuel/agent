@@ -11,6 +11,7 @@ import (
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
 	"google.golang.org/adk/v2/runner"
@@ -83,10 +84,10 @@ func (s *Service) acquireProducer(id string) (context.Context, *ringbuffer.RingB
 	return ctx, producer, nil
 }
 
-func (s *Service) Run(user, id string, content string) (string, error) {
+func (s *Service) Run(user, id string, content string) error {
 	sessionId, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		return "", errors.New("invalid session")
+		return errors.New("invalid session")
 	}
 
 	objs, err := s.store.FindSession(bson.M{
@@ -95,58 +96,40 @@ func (s *Service) Run(user, id string, content string) (string, error) {
 		"state": bson.M{"$in": []schema.SessionStatus{schema.SessionDone, schema.SessionTemp}},
 	})
 	if err != nil {
-		return "", err
+		return err
 	}
 	if len(objs) == 0 {
-		return "", errors.New("session not found")
+		return errors.New("session not found")
 	}
 
 	ctx, producer, err := s.acquireProducer(sessionId.Hex())
 	if err != nil {
-		return "", err
-	}
-
-	filter := bson.M{
-		"_id": sessionId,
-	}
-	updates := bson.M{
-		"$set": bson.M{
-			"state":      schema.SessionRunning,
-			"updated_at": time.Now(),
-		},
-	}
-	var topic string
-	if objs[0].State == schema.SessionTemp {
-		filter["message_seq"] = 1
-		filter["state"] = schema.SessionTemp
-
-		topic, err = s.ExtractSessionTopic(content)
-		if err == nil {
-			topic = "新对话"
-		}
-		updates["name"] = topic
-	} else {
-		filter["state"] = schema.SessionDone
+		return err
 	}
 
 	// 多轮对话、首次对话
-	err = s.store.UpdateSession(
+	obj, err := s.store.FindOneAndUpdateSession(
 		bson.M{
 			"_id":   sessionId,
 			"state": bson.M{"$in": []schema.SessionStatus{schema.SessionDone, schema.SessionTemp}},
 			"user":  user,
 		},
-		updates,
+		bson.M{"$set": bson.M{
+			"state":      schema.SessionRunning,
+			"updated_at": time.Now(),
+		}},
+		options.FindOneAndUpdate().SetProjection(bson.M{"state": 1}),
 	)
 	if err != nil {
 		s.cancel(sessionId.Hex())
-		return "", err
+		return err
 	}
 
 	msg := genai.NewContentFromText(content, genai.RoleUser)
-	s.newTurn(ctx, producer, user, sessionId, msg)
+	s.wg.Add(1)
+	go s.newTurn(ctx, producer, user, sessionId, msg, obj.State == schema.SessionTemp)
 
-	return topic, nil
+	return nil
 }
 
 func (s *Service) newTurn(
@@ -155,21 +138,43 @@ func (s *Service) newTurn(
 	user string,
 	sessionId bson.ObjectID,
 	msg *genai.Content,
+	isFirst bool,
 ) {
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		defer s.cancel(sessionId.Hex())
+	defer s.wg.Done()
+	defer s.cancel(sessionId.Hex())
 
-		r, err := s.getRunner(
-			user,
-			&AgentConfig{
-				Name:        schema.MainAgentName,
-				Description: "main agent",
-				Prompt:      "You are an AI agent running inside a multi-user agent platform that supports both normal conversations and long-running tasks.",
-			},
+	r, err := s.getRunner(
+		user,
+		&AgentConfig{
+			Name:        schema.MainAgentName,
+			Description: "main agent",
+			Prompt:      "You are an AI agent running inside a multi-user agent platform that supports both normal conversations and long-running tasks.",
+		},
+	)
+	if err != nil {
+		_ = s.store.UpdateSession(
+			bson.M{"_id": sessionId},
+			bson.M{"$set": bson.M{"state": schema.SessionDone}},
 		)
+		return
+	}
+
+	if isFirst && msg != nil && len(msg.Parts) != 0 && msg.Parts[0].Text != "" {
+		name, err := s.ExtractSessionTopic(msg.Parts[0].Text)
 		if err != nil {
+			name = "新对话"
+		}
+		_ = s.store.UpdateSession(bson.M{"_id": sessionId}, bson.M{"$set": bson.M{"name": name}})
+	}
+
+	message := msg
+
+	for {
+		next, err := s.run(ctx, user, sessionId, r, producer, message)
+		if err != nil {
+			return
+		}
+		if !next {
 			_ = s.store.UpdateSession(
 				bson.M{"_id": sessionId},
 				bson.M{"$set": bson.M{"state": schema.SessionDone}},
@@ -177,56 +182,40 @@ func (s *Service) newTurn(
 			return
 		}
 
-		message := msg
+		// 等待用户输入
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second * 10):
 
-		for {
-			next, err := s.run(ctx, user, sessionId, r, producer, message)
-			if err != nil {
-				return
-			}
-			if !next {
-				_ = s.store.UpdateSession(
-					bson.M{"_id": sessionId},
-					bson.M{"$set": bson.M{"state": schema.SessionDone}},
-				)
-				return
-			}
-
-			// 等待用户输入
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Second * 10):
-
-			}
-
-			obj, err := s.store.FindOneAndUpdateSession(
-				bson.M{"_id": sessionId, "state": schema.SessionRunning},
-				bson.M{
-					"$set": bson.M{"updated_at": time.Now()},
-					//"$unset": bson.M{"wait": 1},
-				},
-			)
-			if err != nil {
-				return
-			}
-
-			parts := make([]*genai.Part, 0, len(obj.Wait))
-			for _, item := range obj.Wait {
-				parts = append(parts, &genai.Part{
-					FunctionResponse: &genai.FunctionResponse{
-						ID:   item.ID,
-						Name: toolconfirmation.FunctionCallName,
-						Response: map[string]any{
-							"confirmed": true,
-							"payload":   item.Content,
-						},
-					},
-				})
-			}
-			message = buildInputRequiredMessage(obj.Wait)
 		}
-	}()
+
+		obj, err := s.store.FindOneAndUpdateSession(
+			bson.M{"_id": sessionId, "state": schema.SessionRunning},
+			bson.M{
+				"$set": bson.M{"updated_at": time.Now()},
+				//"$unset": bson.M{"wait": 1},
+			},
+		)
+		if err != nil {
+			return
+		}
+
+		parts := make([]*genai.Part, 0, len(obj.Wait))
+		for _, item := range obj.Wait {
+			parts = append(parts, &genai.Part{
+				FunctionResponse: &genai.FunctionResponse{
+					ID:   item.ID,
+					Name: toolconfirmation.FunctionCallName,
+					Response: map[string]any{
+						"confirmed": true,
+						"payload":   item.Content,
+					},
+				},
+			})
+		}
+		message = buildInputRequiredMessage(obj.Wait)
+	}
 }
 
 func (s *Service) run(
@@ -415,7 +404,8 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 			}
 
 			msg := &genai.Content{Role: genai.RoleUser, Parts: parts}
-			s.newTurn(ctx, producer, user, sessionId, msg)
+			s.wg.Add(1)
+			go s.newTurn(ctx, producer, user, sessionId, msg, false)
 			return nil
 		}
 		time.Sleep(time.Second * 3)
