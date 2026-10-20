@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"google.golang.org/adk/v2/model"
+	"google.golang.org/adk/v2/session"
 	"google.golang.org/genai"
 )
 
@@ -136,4 +137,52 @@ func (s *Service) ExtractSessionTopic(content string) (string, error) {
 		}
 	}
 	return b.String(), nil
+}
+
+func (s *Service) DeleteSession(user, id string) error {
+	sessionId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+
+	// 用户会话为软删除
+	err = s.store.DeleteSession(user, sessionId)
+	if err != nil {
+		return err
+	}
+	// SessionService 为直接删除，忽略删除错误
+	_ = s.adkSession.Delete(context.Background(), &session.DeleteRequest{
+		AppName:   schema.RunnerName,
+		UserID:    user,
+		SessionID: id,
+	})
+
+	return nil
+}
+
+func (s *Service) GetSessionMessages(
+	id string,
+	offset string,
+	limit int,
+) ([]*schema.Message, error) {
+	sessionId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, err
+	}
+
+	filter := bson.M{
+		"session": sessionId,
+	}
+	if offset != "" {
+		mid, err := bson.ObjectIDFromHex(offset)
+		if err != nil {
+			return nil, err
+		}
+		filter["_id"] = bson.M{"$lt": mid}
+	}
+
+	return s.store.GetMessages(
+		filter,
+		options.Find().SetSort(bson.M{"_id": -1}).SetLimit(int64(limit)),
+	)
 }

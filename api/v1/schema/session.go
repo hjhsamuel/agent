@@ -18,6 +18,10 @@ type SessionBase struct {
 	UpdatedAt int64  `json:"updated_at"` // 最后对话时间
 }
 
+type DeleteSessionReq struct {
+	ID string `uri:"id"` // 会话 id
+}
+
 type StreamReq struct {
 	ID  string `form:"id"`  // 会话 id
 	Seq uint64 `form:"seq"` // sse chunk id
@@ -28,8 +32,35 @@ type ChatReq struct {
 	Content string `json:"content"` // 对话消息
 }
 
+type GetChatMessagesReq struct {
+	ID     string `uri:"id"`      // 会话 id
+	Offset string `form:"offset"` // 消息索引，默认为空
+	Limit  int    `form:"limit"`  // 最大数量
+}
+
+type GetChatMessagesRsp struct {
+	Offset string         `json:"offset"` // 消息索引
+	Data   []*MessageInfo `json:"data"`
+}
+
+type MessageInfo struct {
+	ID        string `json:"id"`         // 消息 id
+	Role      string `json:"role"`       // 角色
+	Content   string `json:"content"`    // 内容
+	CreatedAt int64  `json:"created_at"` // 创建时间
+}
+
 type InputRequiredReq struct {
 	ID      string `uri:"id"`       // 会话 id
 	CallID  string `json:"call_id"` // 任务 id
 	Content string `json:"content"` // 用户补充内容
+}
+
+type WaitInputListReq struct {
+	ID string `uri:"id"` // 会话 id
+}
+
+type WaitInputInfo struct {
+	ID      string `json:"id"`      // call id
+	Content string `json:"content"` // 提示内容
 }

@@ -56,7 +56,30 @@ func (a *Api) GetSessionList(c *gin.Context) {
 }
 
 func (a *Api) DeleteSession(c *gin.Context) {
-	// TODO
+	var req schema.DeleteSessionReq
+	_ = c.ShouldBindUri(&req)
+
+	if req.ID == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id is required",
+		})
+		return
+	}
+
+	auth := common.GetAuth(c)
+
+	err := a.srv.DeleteSession(strconv.Itoa(auth.ID), req.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("delete session: %v", err),
+		})
+	} else {
+		c.JSON(http.StatusOK, &common.Response{
+			Code: http.StatusOK,
+		})
+	}
 }
 
 func (a *Api) Stream(c *gin.Context) {
@@ -160,9 +183,78 @@ func (a *Api) InputRequired(c *gin.Context) {
 }
 
 func (a *Api) GetChatMessages(c *gin.Context) {
-	// TODO
+	var req schema.GetChatMessagesReq
+	_ = c.ShouldBindUri(&req)
+	_ = c.ShouldBindQuery(&req)
+
+	if req.ID == "" || req.Limit < 0 {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id, limit is required",
+		})
+		return
+	}
+
+	objs, err := a.srv.GetSessionMessages(req.ID, req.Offset, req.Limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("get chat messages: %v", err),
+		})
+		return
+	}
+
+	rsp := &schema.GetChatMessagesRsp{
+		Offset: req.Offset,
+		Data:   make([]*schema.MessageInfo, 0),
+	}
+	for _, item := range objs {
+		rsp.Offset = item.ID.Hex()
+		rsp.Data = append(rsp.Data, &schema.MessageInfo{
+			ID:        item.ID.Hex(),
+			Role:      string(item.Role),
+			Content:   item.Content,
+			CreatedAt: item.CreatedAt.Unix(),
+		})
+	}
+
+	c.JSON(http.StatusOK, &common.Response{
+		Code: http.StatusOK,
+		Data: rsp,
+	})
 }
 
 func (a *Api) WaitInputList(c *gin.Context) {
-	// TODO
+	var req schema.WaitInputListReq
+	_ = c.ShouldBindUri(&req)
+
+	if req.ID == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id is required",
+		})
+	}
+
+	auth := common.GetAuth(c)
+
+	obj, err := a.srv.GetSession(strconv.Itoa(auth.ID), req.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("get session: %v", err),
+		})
+		return
+	}
+
+	rsp := make([]*schema.WaitInputInfo, 0)
+	for _, item := range obj.Wait {
+		rsp = append(rsp, &schema.WaitInputInfo{
+			ID:      item.ID,
+			Content: item.Hint,
+		})
+	}
+	c.JSON(http.StatusOK, &common.Response{
+		Code: http.StatusOK,
+		Data: rsp,
+	})
 }

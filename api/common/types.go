@@ -30,8 +30,8 @@ func GetTokenSalt() string {
 
 type Response struct {
 	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    any    `json:"data"`
+	Message string `json:"message,omitempty"`
+	Data    any    `json:"data,omitempty"`
 }
 
 type Auth struct {

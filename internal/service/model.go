@@ -6,6 +6,7 @@ import (
 	"github.com/hjhsamuel/agent/internal/store/request"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 func (s *Service) AddModel(
@@ -48,7 +49,7 @@ func (s *Service) GetModelGroups() ([]*request.GroupModel, error) {
 	return s.store.GroupModel()
 }
 
-func (s *Service) AddApiKey(id string, key string, weight int64) (int64, error) {
+func (s *Service) AddApiKey(id string, name string, key string, weight int64) (int64, error) {
 	if weight < schema.MinApiKeyWeight || weight > schema.MaxApiKeyWeight {
 		return 0, fmt.Errorf("weight out of range: [%d, %d]", schema.MinApiKeyWeight, schema.MaxApiKeyWeight)
 	}
@@ -64,6 +65,7 @@ func (s *Service) AddApiKey(id string, key string, weight int64) (int64, error) 
 	}
 
 	obj := &schema.ApiKey{
+		Name:       name,
 		Version:    val.Version,
 		Ciphertext: val.Ciphertext,
 		Nonce:      val.Nonce,
@@ -72,4 +74,21 @@ func (s *Service) AddApiKey(id string, key string, weight int64) (int64, error) 
 	}
 
 	return s.store.AddApiKey(modelId, obj)
+}
+
+func (s *Service) GetApiKeys(id string) ([]*schema.ApiKey, error) {
+	modelId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, err
+	}
+
+	obj, err := s.store.GetModel(
+		bson.M{"_id": modelId},
+		options.FindOne().SetProjection(bson.M{"api_keys": 1}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return obj.ApiKeys, nil
 }

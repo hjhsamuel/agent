@@ -153,3 +153,20 @@ func (d *Store) AddApiKey(id bson.ObjectID, obj *schema.ApiKey) (int64, error) {
 
 	return modelObj.Seq, nil
 }
+
+func (d *Store) GetModel(
+	filter bson.M,
+	opts ...options.Lister[options.FindOneOptions],
+) (*schema.Model, error) {
+	result := d.getCollection(schema.ModelCollection).FindOne(context.Background(), filter, opts...)
+	if err := result.Err(); err != nil {
+		return nil, err
+	}
+
+	var obj schema.Model
+	if err := result.Decode(&obj); err != nil {
+		return nil, err
+	}
+
+	return &obj, nil
+}

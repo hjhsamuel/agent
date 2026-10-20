@@ -33,6 +33,7 @@ const (
 	SessionRunning                      // 运行中
 	SessionDone                         // 结束运行
 	SessionWait                         // 等待用户输入
+	SessionDeleted                      // 被删除
 )
 
 const MessageCollection = "message"

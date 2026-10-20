@@ -16,4 +16,6 @@ func modelRoute(api *handler.Api, g *gin.RouterGroup) {
 	group.PUT("/:id", api.UpdateModel)
 
 	group.POST("/:id/key", api.AddApiKey)
+	group.DELETE("/:id/key/:api", api.DeleteApiKey)
+	group.PUT("/:id/key", api.UpgradeApiKey)
 }

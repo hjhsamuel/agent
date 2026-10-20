@@ -22,8 +22,21 @@ type GetModelsRsp struct {
 	Enable   bool   `json:"enable"`   // 是否可用
 }
 
+type GetModelInfoReq struct {
+	ID string `uri:"id"` // 模型 id
+}
+
+type ApiKeyInfo struct {
+	ID      int64  `json:"id"`      // api key id
+	Name    string `json:"name"`    // 名称
+	Version int64  `json:"version"` // 密钥版本
+	Weight  int64  `json:"weight"`  // 权重
+	Enable  bool   `json:"enable"`  // 是否可用
+}
+
 type AddApiKeyReq struct {
 	ID     string `uri:"id"`      // model id
 	Key    string `json:"key"`    // api key
 	Weight int64  `json:"weight"` // 权重
+	Name   string `json:"name"`   // 名称，仅用于展示
 }

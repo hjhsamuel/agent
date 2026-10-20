@@ -83,7 +83,41 @@ func (a *Api) GetModels(c *gin.Context) {
 }
 
 func (a *Api) GetModelInfo(c *gin.Context) {
-	// TODO
+	var req schema.GetModelInfoReq
+	_ = c.ShouldBindUri(&req)
+
+	if req.ID == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id is required",
+		})
+		return
+	}
+
+	objs, err := a.srv.GetApiKeys(req.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("get api keys: %v", err),
+		})
+		return
+	}
+
+	rsp := make([]*schema.ApiKeyInfo, 0, len(objs))
+	for _, item := range objs {
+		rsp = append(rsp, &schema.ApiKeyInfo{
+			ID:      item.ID,
+			Name:    item.Name,
+			Version: item.Version,
+			Weight:  item.Weight,
+			Enable:  item.Enable,
+		})
+	}
+
+	c.JSON(http.StatusOK, &common.Response{
+		Code: http.StatusOK,
+		Data: rsp,
+	})
 }
 
 func (a *Api) UpdateModel(c *gin.Context) {
@@ -110,7 +144,7 @@ func (a *Api) AddApiKey(c *gin.Context) {
 		return
 	}
 
-	id, err := a.srv.AddApiKey(req.ID, req.Key, req.Weight)
+	id, err := a.srv.AddApiKey(req.ID, req.Name, req.Key, req.Weight)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
@@ -122,4 +156,12 @@ func (a *Api) AddApiKey(c *gin.Context) {
 		Code: http.StatusOK,
 		Data: id,
 	})
+}
+
+func (a *Api) DeleteApiKey(c *gin.Context) {
+	// TODO
+}
+
+func (a *Api) UpgradeApiKey(c *gin.Context) {
+	// TODO
 }

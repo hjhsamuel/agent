@@ -30,6 +30,7 @@ type ModelConfig struct {
 
 type ApiKey struct {
 	ID         int64  `bson:"id"`
+	Name       string `bson:"name"`
 	Version    int64  `bson:"version"`
 	Ciphertext []byte `bson:"ciphertext"`
 	Nonce      []byte `bson:"nonce"`
