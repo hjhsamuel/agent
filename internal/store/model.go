@@ -170,3 +170,21 @@ func (d *Store) GetModel(
 
 	return &obj, nil
 }
+
+func (d *Store) UpdateModel(filter, update bson.M) error {
+	_, err := d.getCollection(schema.ModelCollection).UpdateOne(context.Background(), filter, update)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Store) DeleteApiKey(filter, update bson.M) error {
+	_, err := d.getCollection(schema.ModelCollection).UpdateOne(context.Background(), filter, update)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

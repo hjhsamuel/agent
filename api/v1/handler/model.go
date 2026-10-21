@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/api/common"
 	"github.com/hjhsamuel/agent/api/v1/schema"
+	"github.com/hjhsamuel/agent/internal/store/request"
 )
 
 func (a *Api) AddModel(c *gin.Context) {
@@ -121,7 +122,46 @@ func (a *Api) GetModelInfo(c *gin.Context) {
 }
 
 func (a *Api) UpdateModel(c *gin.Context) {
-	// TODO
+	var req schema.UpdateModelReq
+	_ = c.ShouldBindUri(&req)
+	_ = c.ShouldBindJSON(&req)
+
+	if req.ID == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id is required",
+		})
+		return
+	}
+
+	update := &request.UpdateModelReq{
+		Provider:     req.Provider,
+		Name:         req.Name,
+		Url:          req.Url,
+		ContextLimit: req.ContextLimit,
+		Enable:       req.Enable,
+	}
+	if req.Reasoning != nil && req.Reasoning.Key != "" && req.Reasoning.Value != "" {
+		update.Reasoning = &struct {
+			Key   string
+			Value string
+		}{
+			Key:   req.Reasoning.Key,
+			Value: req.Reasoning.Value,
+		}
+	}
+
+	err := a.srv.UpdateModel(req.ID, update)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("update model: %v", err),
+		})
+	} else {
+		c.JSON(http.StatusOK, &common.Response{
+			Code: http.StatusOK,
+		})
+	}
 }
 
 func (a *Api) AddApiKey(c *gin.Context) {
@@ -159,9 +199,59 @@ func (a *Api) AddApiKey(c *gin.Context) {
 }
 
 func (a *Api) DeleteApiKey(c *gin.Context) {
-	// TODO
+	var req schema.DeleteApiKeyReq
+	_ = c.ShouldBindUri(&req)
+
+	if req.ID == "" || req.Api == 0 {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id and api are required",
+		})
+		return
+	}
+
+	err := a.srv.DeleteApiKey(req.ID, req.Api)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("delete api key: %v", err),
+		})
+	} else {
+		c.JSON(http.StatusOK, &common.Response{
+			Code: http.StatusOK,
+		})
+	}
 }
 
-func (a *Api) UpgradeApiKey(c *gin.Context) {
-	// TODO
+func (a *Api) UpdateApiKey(c *gin.Context) {
+	var req schema.UpdateApiKeyReq
+	_ = c.ShouldBindUri(&req)
+	_ = c.ShouldBindJSON(&req)
+
+	if req.ID == "" || req.Api == 0 {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id and api are required",
+		})
+		return
+	}
+
+	update := &request.UpdateApiKeyReq{
+		Name:    req.Name,
+		Upgrade: req.Upgrade,
+		Weight:  req.Weight,
+		Enable:  req.Enable,
+	}
+
+	err := a.srv.UpdateApiKey(req.ID, req.Api, update)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("update api key: %v", err),
+		})
+	} else {
+		c.JSON(http.StatusOK, &common.Response{
+			Code: http.StatusOK,
+		})
+	}
 }

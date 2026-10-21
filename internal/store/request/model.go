@@ -13,3 +13,22 @@ type ModelInfo struct {
 	Type   string
 	Enable bool
 }
+
+type UpdateModelReq struct {
+	Provider     *string
+	Name         *string
+	Url          *string
+	ContextLimit *int64
+	Reasoning    *struct {
+		Key   string
+		Value string
+	}
+	Enable *bool
+}
+
+type UpdateApiKeyReq struct {
+	Name    *string
+	Upgrade bool
+	Weight  *int64
+	Enable  *bool
+}
