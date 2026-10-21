@@ -9,7 +9,7 @@ import (
 	"github.com/hjhsamuel/agent/app"
 )
 
-var (
+const (
 	Version   = ""
 	CommitID  = ""
 	BuildTime = ""
