@@ -12,6 +12,7 @@ import (
 	"github.com/hjhsamuel/agent/internal/tool"
 	"github.com/hjhsamuel/agent/pkg/kms"
 	"github.com/sirupsen/logrus"
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"google.golang.org/adk/v2/session"
 )
 
@@ -28,6 +29,25 @@ type Service struct {
 
 func (s *Service) Start() error {
 	// TODO
+	// 检查 skills
+
+	// 恢复任务
+	objs, err := s.store.FindSession(bson.M{
+		"state": bson.M{
+			"$in": []schema.SessionStatus{
+				schema.SessionRunning,
+				schema.SessionInputted,
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, item := range objs {
+		_ = s.recoverSession(item)
+	}
+
 	return nil
 }
 

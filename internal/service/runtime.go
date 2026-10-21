@@ -74,12 +74,13 @@ func (s *Service) getRunner(user string, cfg *AgentConfig) (*runner.Runner, erro
 func (s *Service) acquireProducer(id string) (context.Context, *ringbuffer.RingBufferProducer, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	if s.setLife(id, cancel) {
+		cancel()
 		return nil, nil, errors.New("session already running")
 	}
 
 	producer, err := s.rbs.AcquireProducer(ctx, id)
 	if err != nil {
-		cancel()
+		s.cancel(id)
 		return nil, nil, err
 	}
 
@@ -269,10 +270,6 @@ func (s *Service) run(
 	events := r.Run(ctx, user, sessionId.Hex(), msg, agent.RunConfig{StreamingMode: agent.StreamingModeSSE})
 	for event, err := range events {
 		if err != nil {
-			_ = s.store.UpdateSession(
-				bson.M{"_id": sessionId, "state": schema.SessionRunning},
-				bson.M{"$set": bson.M{"state": schema.SessionDone}},
-			)
 			return false, err
 		}
 
