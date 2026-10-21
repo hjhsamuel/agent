@@ -35,6 +35,7 @@ func (a *Api) GetSessionList(c *gin.Context) {
 	}
 
 	auth := common.GetAuth(c)
+
 	objs, err := a.srv.GetSessionList(strconv.Itoa(auth.ID), req.Offset, req.Limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{

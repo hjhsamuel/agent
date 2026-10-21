@@ -21,8 +21,12 @@ import (
 
 func (s *Service) GetSessionList(user string, offset string, limit int) ([]*schema.Session, error) {
 	filter := bson.M{
-		"user":  user,
-		"state": bson.M{"$ne": schema.SessionTemp},
+		"user": user,
+		"state": bson.M{"$in": []schema.SessionStatus{
+			schema.SessionRunning,
+			schema.SessionDone,
+			schema.SessionWait,
+		}},
 	}
 	if offset != "" {
 		sessionId, err := bson.ObjectIDFromHex(offset)
