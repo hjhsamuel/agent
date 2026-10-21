@@ -358,7 +358,7 @@ func (s *Service) run(
 		for _, item := range inputRequiredReqs {
 			_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
 				Type: ringbuffer.SSEChunkTypeHumanInTheLoop,
-				Data: ringbuffer.HITLEvent{ID: item.ID, Content: item.Content}.ToData(),
+				Data: ringbuffer.HITLEvent{ID: item.ID, Content: item.Hint}.ToData(),
 			})
 		}
 
@@ -438,6 +438,7 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 				bson.M{"$set": bson.M{"state": schema.SessionRunning}},
 			)
 			if err != nil {
+				s.cancel(id)
 				return err
 			}
 

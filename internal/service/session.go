@@ -60,7 +60,7 @@ func (s *Service) GetSession(user, id string) (*schema.Session, error) {
 		return nil, err
 	}
 
-	objs, err := s.store.FindSession(bson.M{"_id": sessionId, "user": user, "state": schema.SessionWait})
+	objs, err := s.store.FindSession(bson.M{"_id": sessionId, "user": user})
 	if err != nil {
 		return nil, err
 	}

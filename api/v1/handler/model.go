@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/api/common"
-	"github.com/hjhsamuel/agent/api/v1/schema"
+	"github.com/hjhsamuel/agent/api/v1/entities"
 	"github.com/hjhsamuel/agent/internal/store/request"
 )
 
@@ -17,14 +17,14 @@ import (
 // @Accept json
 // @Produce json
 // @Security CookieAuth
-// @Param request body schema.AddModelReq true "模型配置，provider、name、url、type、context_limit 必填"
+// @Param request body entities.AddModelReq true "模型配置，provider、name、url、type、context_limit 必填"
 // @Success 200 {object} common.Response{data=string} "创建成功，data 为模型 ID"
 // @Failure 400 {object} common.Response "缺少必填参数"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "创建模型失败"
 // @Router /v1/model [post]
 func (a *Api) AddModel(c *gin.Context) {
-	var req schema.AddModelReq
+	var req entities.AddModelReq
 	_ = c.ShouldBindJSON(&req)
 
 	if req.Provider == "" {
@@ -71,7 +71,7 @@ func (a *Api) AddModel(c *gin.Context) {
 // @Tags 模型
 // @Produce json
 // @Security CookieAuth
-// @Success 200 {object} common.Response{data=[]schema.GetModelsRsp} "模型列表"
+// @Success 200 {object} common.Response{data=[]entities.GetModelsRsp} "模型列表"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "查询模型失败"
 // @Router /v1/model [get]
@@ -85,10 +85,10 @@ func (a *Api) GetModels(c *gin.Context) {
 		return
 	}
 
-	rsp := make([]*schema.GetModelsRsp, 0)
+	rsp := make([]*entities.GetModelsRsp, 0)
 	for _, item := range groups {
 		for _, elem := range item.Models {
-			info := &schema.GetModelsRsp{
+			info := &entities.GetModelsRsp{
 				ID:       elem.ID.Hex(),
 				Provider: item.Provider,
 				Name:     elem.Name,
@@ -112,13 +112,13 @@ func (a *Api) GetModels(c *gin.Context) {
 // @Produce json
 // @Security CookieAuth
 // @Param id path string true "模型 ID"
-// @Success 200 {object} common.Response{data=[]schema.ApiKeyInfo} "API Key 列表"
+// @Success 200 {object} common.Response{data=[]entities.ApiKeyInfo} "API Key 列表"
 // @Failure 400 {object} common.Response "缺少模型 ID"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "查询 API Key 失败"
 // @Router /v1/model/{id} [get]
 func (a *Api) GetModelInfo(c *gin.Context) {
-	var req schema.GetModelInfoReq
+	var req entities.GetModelInfoReq
 	_ = c.ShouldBindUri(&req)
 
 	if req.ID == "" {
@@ -138,9 +138,9 @@ func (a *Api) GetModelInfo(c *gin.Context) {
 		return
 	}
 
-	rsp := make([]*schema.ApiKeyInfo, 0, len(objs))
+	rsp := make([]*entities.ApiKeyInfo, 0, len(objs))
 	for _, item := range objs {
-		rsp = append(rsp, &schema.ApiKeyInfo{
+		rsp = append(rsp, &entities.ApiKeyInfo{
 			ID:      item.ID,
 			Name:    item.Name,
 			Version: item.Version,
@@ -163,14 +163,14 @@ func (a *Api) GetModelInfo(c *gin.Context) {
 // @Produce json
 // @Security CookieAuth
 // @Param id path string true "模型 ID"
-// @Param request body schema.UpdateModelReq true "待更新的模型配置"
+// @Param request body entities.UpdateModelReq true "待更新的模型配置"
 // @Success 200 {object} common.Response "更新成功"
 // @Failure 400 {object} common.Response "缺少模型 ID"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "更新模型失败"
 // @Router /v1/model/{id} [put]
 func (a *Api) UpdateModel(c *gin.Context) {
-	var req schema.UpdateModelReq
+	var req entities.UpdateModelReq
 	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindJSON(&req)
 
@@ -220,14 +220,14 @@ func (a *Api) UpdateModel(c *gin.Context) {
 // @Produce json
 // @Security CookieAuth
 // @Param id path string true "模型 ID"
-// @Param request body schema.AddApiKeyReq true "API Key 配置，key 必填"
+// @Param request body entities.AddApiKeyReq true "API Key 配置，key 必填"
 // @Success 200 {object} common.Response{data=int64} "创建成功，data 为 API Key ID"
 // @Failure 400 {object} common.Response "缺少模型 ID 或 API Key"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "新增 API Key 失败"
 // @Router /v1/model/{id}/key [post]
 func (a *Api) AddApiKey(c *gin.Context) {
-	var req schema.AddApiKeyReq
+	var req entities.AddApiKeyReq
 	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindJSON(&req)
 
@@ -273,7 +273,7 @@ func (a *Api) AddApiKey(c *gin.Context) {
 // @Failure 500 {object} common.Response "删除 API Key 失败"
 // @Router /v1/model/{id}/key/{api} [delete]
 func (a *Api) DeleteApiKey(c *gin.Context) {
-	var req schema.DeleteApiKeyReq
+	var req entities.DeleteApiKeyReq
 	_ = c.ShouldBindUri(&req)
 
 	if req.ID == "" || req.Api == 0 {
@@ -306,14 +306,14 @@ func (a *Api) DeleteApiKey(c *gin.Context) {
 // @Security CookieAuth
 // @Param id path string true "模型 ID"
 // @Param api path int64 true "API Key ID，不能为 0"
-// @Param request body schema.UpdateApiKeyReq true "待更新的 API Key 配置"
+// @Param request body entities.UpdateApiKeyReq true "待更新的 API Key 配置"
 // @Success 200 {object} common.Response "更新成功"
 // @Failure 400 {object} common.Response "缺少模型 ID 或 API Key ID"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "更新 API Key 失败"
 // @Router /v1/model/{id}/key/{api} [put]
 func (a *Api) UpdateApiKey(c *gin.Context) {
-	var req schema.UpdateApiKeyReq
+	var req entities.UpdateApiKeyReq
 	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindJSON(&req)
 

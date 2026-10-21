@@ -7,7 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/api/common"
-	"github.com/hjhsamuel/agent/api/v1/schema"
+	"github.com/hjhsamuel/agent/api/v1/entities"
+	"github.com/hjhsamuel/agent/internal/store/schema"
 )
 
 // GetSessionList 分页获取当前用户的会话列表。
@@ -18,13 +19,13 @@ import (
 // @Security CookieAuth
 // @Param offset query string false "上一页返回的会话索引，首次查询不传"
 // @Param limit query int true "最大返回数量，范围为 1 到 50" minimum(1) maximum(50)
-// @Success 200 {object} common.Response{data=schema.GetSessionListRsp} "会话列表"
+// @Success 200 {object} common.Response{data=entities.GetSessionListRsp} "会话列表"
 // @Failure 400 {object} common.Response "limit 不在允许范围内"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "查询会话失败"
 // @Router /v1/session [get]
 func (a *Api) GetSessionList(c *gin.Context) {
-	var req schema.GetSessionListReq
+	var req entities.GetSessionListReq
 	_ = c.ShouldBindQuery(&req)
 	if req.Limit <= 0 || req.Limit > 50 {
 		c.JSON(http.StatusBadRequest, &common.Response{
@@ -46,12 +47,12 @@ func (a *Api) GetSessionList(c *gin.Context) {
 	}
 
 	var (
-		rsp    = make([]*schema.SessionBase, 0, len(objs))
+		rsp    = make([]*entities.SessionBase, 0, len(objs))
 		offset = req.Offset
 	)
 	for _, obj := range objs {
 		offset = obj.ID.Hex()
-		rsp = append(rsp, &schema.SessionBase{
+		rsp = append(rsp, &entities.SessionBase{
 			ID:        offset,
 			Name:      obj.Name,
 			State:     int(obj.State),
@@ -62,7 +63,7 @@ func (a *Api) GetSessionList(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, &common.Response{
 		Code: http.StatusOK,
-		Data: &schema.GetSessionListRsp{
+		Data: &entities.GetSessionListRsp{
 			Offset: offset,
 			Data:   rsp,
 		},
@@ -81,7 +82,7 @@ func (a *Api) GetSessionList(c *gin.Context) {
 // @Failure 500 {object} common.Response "删除会话失败"
 // @Router /v1/session/{id} [delete]
 func (a *Api) DeleteSession(c *gin.Context) {
-	var req schema.DeleteSessionReq
+	var req entities.DeleteSessionReq
 	_ = c.ShouldBindUri(&req)
 
 	if req.ID == "" {
@@ -123,7 +124,7 @@ func (a *Api) DeleteSession(c *gin.Context) {
 // @Failure 500 {object} common.Response "创建、查询会话或建立事件流失败"
 // @Router /v1/session/stream [get]
 func (a *Api) Stream(c *gin.Context) {
-	var req schema.StreamReq
+	var req entities.StreamReq
 	_ = c.ShouldBindQuery(&req)
 
 	auth := common.GetAuth(c)
@@ -140,11 +141,18 @@ func (a *Api) Stream(c *gin.Context) {
 		}
 		sessionId = id
 	} else {
-		_, err := a.srv.GetSession(strconv.Itoa(auth.ID), req.ID)
+		obj, err := a.srv.GetSession(strconv.Itoa(auth.ID), req.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, &common.Response{
 				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("get session: %v", err),
+			})
+			return
+		}
+		if obj == nil {
+			c.JSON(http.StatusBadRequest, &common.Response{
+				Code:    http.StatusBadRequest,
+				Message: "session not found",
 			})
 			return
 		}
@@ -173,14 +181,14 @@ func (a *Api) Stream(c *gin.Context) {
 // @Produce json
 // @Security CookieAuth
 // @Param id path string true "会话 ID"
-// @Param request body schema.ChatReq true "对话消息，content 必填"
+// @Param request body entities.ChatReq true "对话消息，content 必填"
 // @Success 200 {object} common.Response "消息已提交"
 // @Failure 400 {object} common.Response "缺少会话 ID 或消息内容"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "提交消息失败"
 // @Router /v1/session/{id}/message [post]
 func (a *Api) Chat(c *gin.Context) {
-	var req schema.ChatReq
+	var req entities.ChatReq
 	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindJSON(&req)
 
@@ -216,14 +224,14 @@ func (a *Api) Chat(c *gin.Context) {
 // @Produce json
 // @Security CookieAuth
 // @Param id path string true "会话 ID"
-// @Param request body schema.InputRequiredReq true "用户补充内容，call_id 和 content 必填"
+// @Param request body entities.InputRequiredReq true "用户补充内容，call_id 和 content 必填"
 // @Success 200 {object} common.Response "提交成功"
 // @Failure 400 {object} common.Response "缺少会话 ID、任务 ID 或补充内容"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "提交补充内容失败"
 // @Router /v1/session/{id}/input [post]
 func (a *Api) InputRequired(c *gin.Context) {
-	var req schema.InputRequiredReq
+	var req entities.InputRequiredReq
 	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindJSON(&req)
 	if req.ID == "" || req.CallID == "" || req.Content == "" {
@@ -258,13 +266,13 @@ func (a *Api) InputRequired(c *gin.Context) {
 // @Param id path string true "会话 ID"
 // @Param offset query string false "上一页返回的消息索引，首次查询不传"
 // @Param limit query int false "最大返回数量，0 表示不限制" default(0) minimum(0)
-// @Success 200 {object} common.Response{data=schema.GetChatMessagesRsp} "历史消息列表"
+// @Success 200 {object} common.Response{data=entities.GetChatMessagesRsp} "历史消息列表"
 // @Failure 400 {object} common.Response "缺少会话 ID 或 limit 小于 0"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "查询历史消息失败"
 // @Router /v1/session/{id}/message [get]
 func (a *Api) GetChatMessages(c *gin.Context) {
-	var req schema.GetChatMessagesReq
+	var req entities.GetChatMessagesReq
 	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindQuery(&req)
 
@@ -285,13 +293,13 @@ func (a *Api) GetChatMessages(c *gin.Context) {
 		return
 	}
 
-	rsp := &schema.GetChatMessagesRsp{
+	rsp := &entities.GetChatMessagesRsp{
 		Offset: req.Offset,
-		Data:   make([]*schema.MessageInfo, 0),
+		Data:   make([]*entities.MessageInfo, 0),
 	}
 	for _, item := range objs {
 		rsp.Offset = item.ID.Hex()
-		rsp.Data = append(rsp.Data, &schema.MessageInfo{
+		rsp.Data = append(rsp.Data, &entities.MessageInfo{
 			ID:        item.ID.Hex(),
 			Role:      string(item.Role),
 			Content:   item.Content,
@@ -312,13 +320,13 @@ func (a *Api) GetChatMessages(c *gin.Context) {
 // @Produce json
 // @Security CookieAuth
 // @Param id path string true "会话 ID"
-// @Success 200 {object} common.Response{data=[]schema.WaitInputInfo} "待补充输入列表"
+// @Success 200 {object} common.Response{data=[]entities.WaitInputInfo} "待补充输入列表"
 // @Failure 400 {object} common.Response "缺少会话 ID"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "查询会话失败"
 // @Router /v1/session/{id}/input [get]
 func (a *Api) WaitInputList(c *gin.Context) {
-	var req schema.WaitInputListReq
+	var req entities.WaitInputListReq
 	_ = c.ShouldBindUri(&req)
 
 	if req.ID == "" {
@@ -339,10 +347,10 @@ func (a *Api) WaitInputList(c *gin.Context) {
 		return
 	}
 
-	rsp := make([]*schema.WaitInputInfo, 0)
-	if obj != nil {
+	rsp := make([]*entities.WaitInputInfo, 0)
+	if obj != nil && obj.State == schema.SessionWait {
 		for _, item := range obj.Wait {
-			rsp = append(rsp, &schema.WaitInputInfo{
+			rsp = append(rsp, &entities.WaitInputInfo{
 				ID:      item.ID,
 				Content: item.Hint,
 			})

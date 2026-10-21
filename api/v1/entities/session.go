@@ -1,4 +1,4 @@
-package schema
+package entities
 
 type GetSessionListReq struct {
 	Offset string `form:"offset"` // 索引，默认为空

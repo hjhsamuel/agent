@@ -1,4 +1,4 @@
-package schema
+package entities
 
 type AddModelReq struct {
 	Provider     string    `json:"provider"`      // 供应商名称，仅用于展示，例如：GLM、DeepSeek
