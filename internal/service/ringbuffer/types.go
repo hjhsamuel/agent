@@ -40,6 +40,7 @@ const (
 	SSEChunkTypeReasoning      SSEChunkType = "reasoning"
 	SSEChunkTypeEnd            SSEChunkType = "end"  // Ends a complete logical chunk; Data must be empty.
 	SSEChunkTypeHumanInTheLoop SSEChunkType = "hitl" // Requests human intervention; Data may carry details.
+	SSEChunkTypeError          SSEChunkType = "error"
 )
 
 // SSEChunk holds opaque SSE bytes. Sequence starts at 1 per buffer. Reads return

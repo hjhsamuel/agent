@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hjhsamuel/agent/internal/service/prompts"
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"github.com/sirupsen/logrus"
@@ -141,6 +142,25 @@ func (s *Service) Run(user, id string, content string) error {
 	return nil
 }
 
+func (s *Service) notifyTurnFailure(
+	producer *ringbuffer.RingBufferProducer,
+	content string,
+	sessionId bson.ObjectID,
+) {
+	_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
+		Type: ringbuffer.SSEChunkTypeError,
+		Data: content,
+	})
+	_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
+		Type: ringbuffer.SSEChunkTypeEnd,
+	})
+
+	_ = s.store.UpdateSession(
+		bson.M{"_id": sessionId, "state": schema.SessionRunning},
+		bson.M{"$set": bson.M{"state": schema.SessionDone}},
+	)
+}
+
 func (s *Service) newTurn(
 	ctx context.Context,
 	producer *ringbuffer.RingBufferProducer,
@@ -152,29 +172,35 @@ func (s *Service) newTurn(
 	defer s.wg.Done()
 	defer s.cancel(sessionId.Hex())
 
+	var turnErr error
+	defer func() {
+		if turnErr != nil {
+			s.notifyTurnFailure(producer, turnErr.Error(), sessionId)
+		}
+	}()
+
 	r, err := s.getRunner(
 		user,
 		&AgentConfig{
 			Name:        schema.MainAgentName,
 			Description: "main agent",
-			Prompt:      "You are an AI agent running inside a multi-user agent platform that supports both normal conversations and long-running tasks.",
+			Prompt:      prompts.SystemPrompt,
 		},
 	)
 	if err != nil {
-		_ = s.store.UpdateSession(
-			bson.M{"_id": sessionId},
-			bson.M{"$set": bson.M{"state": schema.SessionDone}},
-		)
 		logrus.WithField("Session", sessionId).WithError(err).Error("create agent")
+		turnErr = err
 		return
 	}
 
-	if isFirst && msg != nil && len(msg.Parts) != 0 && msg.Parts[0].Text != "" {
-		name, err := s.ExtractSessionTopic(msg.Parts[0].Text)
-		if err != nil {
-			name = "新对话"
+	if isFirst {
+		if msg != nil && len(msg.Parts) != 0 && msg.Parts[0].Text != "" {
+			name, err := s.ExtractSessionTopic(msg.Parts[0].Text)
+			if err != nil {
+				name = "新对话"
+			}
+			_ = s.store.UpdateSession(bson.M{"_id": sessionId}, bson.M{"$set": bson.M{"name": name}})
 		}
-		_ = s.store.UpdateSession(bson.M{"_id": sessionId}, bson.M{"$set": bson.M{"name": name}})
 	}
 
 	message := msg
@@ -183,12 +209,13 @@ func (s *Service) newTurn(
 		next, err := s.run(ctx, user, sessionId, r, producer, message)
 		if err != nil {
 			logrus.WithField("Session", sessionId).WithError(err).Error("run agent")
+			turnErr = err
 			return
 		}
 		if !next {
 			_ = s.store.UpdateSession(
 				bson.M{"_id": sessionId},
-				bson.M{"$set": bson.M{"state": schema.SessionDone}},
+				bson.M{"$set": bson.M{"state": schema.SessionDone, "wait": []*schema.WaitInput{}}},
 			)
 			return
 		}
@@ -202,9 +229,9 @@ func (s *Service) newTurn(
 		}
 
 		obj, err := s.store.FindOneAndUpdateSession(
-			bson.M{"_id": sessionId, "state": schema.SessionRunning},
+			bson.M{"_id": sessionId, "state": schema.SessionInputted},
 			bson.M{
-				"$set": bson.M{"updated_at": time.Now()},
+				"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()},
 				//"$unset": bson.M{"wait": 1},
 			},
 		)
@@ -392,7 +419,7 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 	}
 	err = s.store.UpdateSession(
 		bson.M{"_id": sessionId, "state": schema.SessionWait},
-		bson.M{"$set": bson.M{"state": schema.SessionRunning}},
+		bson.M{"$set": bson.M{"state": schema.SessionInputted}},
 	)
 	if err != nil {
 		return nil
@@ -400,16 +427,16 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 
 	for i := 0; i < 3; i++ {
 		if !s.lifeExists(id) {
-			// 再次校验会话状态
-			objs, err := s.store.FindSession(bson.M{"_id": sessionId, "state": schema.SessionRunning})
+			ctx, producer, err := s.acquireProducer(id)
 			if err != nil {
 				return err
 			}
-			if len(objs) == 0 {
-				return nil
-			}
 
-			ctx, producer, err := s.acquireProducer(id)
+			// 再次校验会话状态
+			_, err = s.store.FindOneAndUpdateSession(
+				bson.M{"_id": sessionId, "state": schema.SessionInputted},
+				bson.M{"$set": bson.M{"state": schema.SessionRunning}},
+			)
 			if err != nil {
 				return err
 			}

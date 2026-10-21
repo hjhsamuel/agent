@@ -153,7 +153,7 @@ func (m *RingBufferManager) Push(producer *RingBufferProducer, chunk SSEChunk) (
 		return 0, err
 	}
 	switch chunk.Type {
-	case SSEChunkTypeData, SSEChunkTypeReasoning, SSEChunkTypeHumanInTheLoop:
+	case SSEChunkTypeData, SSEChunkTypeReasoning, SSEChunkTypeHumanInTheLoop, SSEChunkTypeError:
 	case SSEChunkTypeEnd:
 		if len(chunk.Data) != 0 {
 			return 0, ErrRingBufferInvalidChunk
