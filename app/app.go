@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -78,11 +80,18 @@ func startWeb(srv *service.Service) (*http.Server, error) {
 		Handler: r,
 	}
 
+	listener, err := net.Listen("tcp", httpSrv.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("listen HTTP server on %s: %w", httpSrv.Addr, err)
+	}
+
 	go func() {
-		_ = httpSrv.ListenAndServe()
+		if err := httpSrv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logrus.WithError(err).Error("HTTP server stopped unexpectedly")
+		}
 	}()
 
-	logrus.Infof("Server started, listening at: %s", httpSrv.Addr)
+	logrus.Infof("Server started, listening at: %s", listener.Addr())
 
 	return &httpSrv, nil
 }
