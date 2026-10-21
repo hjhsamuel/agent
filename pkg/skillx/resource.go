@@ -3,31 +3,55 @@ package skillx
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 )
 
 func ReadResource(name, resource string) ([]byte, error) {
-	fp := filepath.Join("skills", name, resource)
-	return os.ReadFile(fp)
+	f, err := OpenResource(name, resource)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return io.ReadAll(f)
+}
+
+// OpenResource opens a resource without allowing paths or symlinks to escape
+// the selected skill directory. The caller must close the returned file.
+func OpenResource(name, resource string) (*os.File, error) {
+	clean, err := resourcePath(resource)
+	if err != nil {
+		return nil, err
+	}
+	root, err := openSkillRoot(name)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	return root.Open(filepath.FromSlash(clean))
 }
 
 func ListResources(name, subPath string) ([]string, error) {
-	root := filepath.Join("skills", name)
-	skillFS := os.DirFS(root)
+	root, err := openSkillRoot(name)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	skillFS := root.FS()
 
 	cleanPath := path.Clean(subPath)
 	isRoot := cleanPath == "." || cleanPath == ""
 
 	var targets []string
 	if !isRoot {
-		switch strings.SplitN(cleanPath, "/", 2)[0] {
-		case "references", "assets", "scripts":
-		default:
-			return nil, errors.New("invalid resource path: must be empty, root (.), or within 'references/', 'assets/', or 'scripts/'")
+		cleanPath, err = resourcePath(subPath)
+		if err != nil {
+			return nil, err
 		}
 
 		targets = []string{cleanPath}

@@ -22,10 +22,15 @@ func AuthMiddleware(ctx *gin.Context) {
 	t, err := jwt.ParseWithClaims(content, claim, func(token *jwt.Token) (any, error) {
 		salt := common.GetTokenSalt()
 		return []byte(salt), nil
-	})
-	if err == nil && t.Valid {
-		ctx.Set(common.AuthKey, claim)
+	}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
+	if err != nil || t == nil || !t.Valid {
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, &common.Response{
+			Code:    http.StatusUnauthorized,
+			Message: "unauthorized",
+		})
+		return
 	}
 
+	ctx.Set(common.AuthKey, claim)
 	ctx.Next()
 }

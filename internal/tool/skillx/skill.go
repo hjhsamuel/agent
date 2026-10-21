@@ -3,8 +3,6 @@ package skillx
 import (
 	"context"
 	"io"
-	"os"
-	"path/filepath"
 
 	"github.com/hjhsamuel/agent/pkg/skillx"
 	"google.golang.org/adk/v2/tool/skilltoolset/skill"
@@ -56,8 +54,7 @@ func (s *Skill) LoadInstructions(ctx context.Context, name string) (string, erro
 }
 
 func (s *Skill) LoadResource(ctx context.Context, name, resourcePath string) (io.ReadCloser, error) {
-	p := filepath.Join("skills", name, resourcePath)
-	return os.Open(p)
+	return skillx.OpenResource(name, resourcePath)
 }
 
 func NewSkillSource() skill.Source {

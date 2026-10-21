@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,9 +21,13 @@ var (
 )
 
 func ReadSkill(name string, withContent bool) (*Frontmatter, string, error) {
-	path := filepath.Join("skills", name, "SKILL.md")
+	root, err := openSkillRoot(name)
+	if err != nil {
+		return nil, "", err
+	}
+	defer root.Close()
 
-	f, err := os.Open(path)
+	f, err := root.Open("SKILL.md")
 	if err != nil {
 		return nil, "", err
 	}
