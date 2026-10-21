@@ -12,7 +12,6 @@ import (
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/adk/v2/session"
@@ -61,12 +60,12 @@ func (s *Service) GetSession(user, id string) (*schema.Session, error) {
 		return nil, err
 	}
 
-	objs, err := s.store.FindSession(bson.M{"_id": sessionId, "user": user})
+	objs, err := s.store.FindSession(bson.M{"_id": sessionId, "user": user, "state": schema.SessionWait})
 	if err != nil {
 		return nil, err
 	}
 	if len(objs) == 0 {
-		return nil, mongo.ErrNoDocuments
+		return nil, nil
 	}
 
 	return objs[0], nil

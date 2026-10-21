@@ -340,12 +340,15 @@ func (a *Api) WaitInputList(c *gin.Context) {
 	}
 
 	rsp := make([]*schema.WaitInputInfo, 0)
-	for _, item := range obj.Wait {
-		rsp = append(rsp, &schema.WaitInputInfo{
-			ID:      item.ID,
-			Content: item.Hint,
-		})
+	if obj != nil {
+		for _, item := range obj.Wait {
+			rsp = append(rsp, &schema.WaitInputInfo{
+				ID:      item.ID,
+				Content: item.Hint,
+			})
+		}
 	}
+
 	c.JSON(http.StatusOK, &common.Response{
 		Code: http.StatusOK,
 		Data: rsp,
