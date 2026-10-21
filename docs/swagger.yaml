@@ -1,0 +1,796 @@
+definitions:
+  common.Response:
+    properties:
+      code:
+        type: integer
+      data:
+        type: any
+      message:
+        type: string
+    type: object
+  schema.AddApiKeyReq:
+    properties:
+      key:
+        description: api key
+        type: string
+      name:
+        description: 名称，仅用于展示
+        type: string
+      weight:
+        description: 权重
+        type: integer
+    type: object
+  schema.AddModelReq:
+    properties:
+      context_limit:
+        description: 上下文限制
+        type: integer
+      name:
+        description: 模型名称，例如：glm-5.3，deepseek-v4-pro
+        type: string
+      provider:
+        description: 供应商名称，仅用于展示，例如：GLM、DeepSeek
+        type: string
+      reasoning:
+        $ref: '#/definitions/schema.KeyValue'
+        description: 深度思考
+      type:
+        description: 模型类型。chat：对话模型；embedding：嵌入模型
+        type: string
+      url:
+        description: 地址
+        type: string
+    type: object
+  schema.ApiKeyInfo:
+    properties:
+      enable:
+        description: 是否可用
+        type: boolean
+      id:
+        description: api key id
+        type: integer
+      name:
+        description: 名称
+        type: string
+      version:
+        description: 密钥版本
+        type: integer
+      weight:
+        description: 权重
+        type: integer
+    type: object
+  schema.ChatReq:
+    properties:
+      content:
+        description: 对话消息
+        type: string
+    type: object
+  schema.GenerateSecretRsp:
+    properties:
+      version:
+        description: 密钥版本
+        type: integer
+    type: object
+  schema.GetChatMessagesRsp:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/schema.MessageInfo'
+        type: array
+      offset:
+        description: 消息索引
+        type: string
+    type: object
+  schema.GetModelsRsp:
+    properties:
+      enable:
+        description: 是否可用
+        type: boolean
+      id:
+        description: model id
+        type: string
+      name:
+        description: 模型
+        type: string
+      provider:
+        description: 供应商
+        type: string
+      type:
+        description: 类型
+        type: string
+    type: object
+  schema.GetSessionListRsp:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/schema.SessionBase'
+        type: array
+      offset:
+        description: 下次检索使用的索引
+        type: string
+    type: object
+  schema.InputRequiredReq:
+    properties:
+      call_id:
+        description: 任务 id
+        type: string
+      content:
+        description: 用户补充内容
+        type: string
+    type: object
+  schema.KeyValue:
+    properties:
+      key:
+        type: string
+      value:
+        type: string
+    type: object
+  schema.MessageInfo:
+    properties:
+      content:
+        description: 内容
+        type: string
+      created_at:
+        description: 创建时间
+        type: integer
+      id:
+        description: 消息 id
+        type: string
+      role:
+        description: 角色
+        type: string
+    type: object
+  schema.SessionBase:
+    properties:
+      created_at:
+        description: 创建时间
+        type: integer
+      id:
+        description: 会话 id
+        type: string
+      name:
+        description: 会话标题
+        type: string
+      state:
+        description: 状态。1：运行中；2：结束；3：等待用户输入
+        type: integer
+      updated_at:
+        description: 最后对话时间
+        type: integer
+    type: object
+  schema.UpdateApiKeyReq:
+    properties:
+      enable:
+        description: 是否可用
+        type: boolean
+      name:
+        description: 名称
+        type: string
+      upgrade:
+        description: 密钥轮换
+        type: boolean
+      weight:
+        description: 权重
+        type: integer
+    type: object
+  schema.UpdateModelReq:
+    properties:
+      context_limit:
+        description: 上下文限制
+        type: integer
+      enable:
+        description: 是否可用
+        type: boolean
+      name:
+        description: 模型名称
+        type: string
+      provider:
+        description: 供应商
+        type: string
+      reasoning:
+        $ref: '#/definitions/schema.KeyValue'
+        description: 深度思考
+      url:
+        description: 地址
+        type: string
+    type: object
+  schema.WaitInputInfo:
+    properties:
+      content:
+        description: 提示内容
+        type: string
+      id:
+        description: call id
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /model:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 模型列表
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/schema.GetModelsRsp'
+                  type: array
+              type: object
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 查询模型失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 获取模型列表
+      tags:
+      - 模型
+    post:
+      consumes:
+      - application/json
+      description: 创建模型配置，成功后返回模型 ID；新建模型默认禁用。
+      parameters:
+      - description: 模型配置，provider、name、url、type、context_limit 必填
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/schema.AddModelReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功，data 为模型 ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 缺少必填参数
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 创建模型失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 新增模型
+      tags:
+      - 模型
+  /model/{id}:
+    get:
+      description: 返回指定模型的 API Key 元信息，不包含 API Key 明文。
+      parameters:
+      - description: 模型 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: API Key 列表
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/schema.ApiKeyInfo'
+                  type: array
+              type: object
+        "400":
+          description: 缺少模型 ID
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 查询 API Key 失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 获取模型的 API Key 列表
+      tags:
+      - 模型
+    put:
+      consumes:
+      - application/json
+      description: 按需更新模型字段；reasoning 的 key 和 value 均非空时才更新深度思考配置。
+      parameters:
+      - description: 模型 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 待更新的模型配置
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/schema.UpdateModelReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 缺少模型 ID
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 更新模型失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 更新模型配置
+      tags:
+      - 模型
+  /model/{id}/key:
+    post:
+      consumes:
+      - application/json
+      description: 加密保存 API Key，成功后返回 API Key ID；新建 API Key 默认禁用。
+      parameters:
+      - description: 模型 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: API Key 配置，key 必填
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/schema.AddApiKeyReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功，data 为 API Key ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  type: integer
+              type: object
+        "400":
+          description: 缺少模型 ID 或 API Key
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 新增 API Key 失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 新增模型 API Key
+      tags:
+      - 模型
+  /model/{id}/key/{api}:
+    delete:
+      parameters:
+      - description: 模型 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: API Key ID，不能为 0
+        in: path
+        name: api
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 缺少模型 ID 或 API Key ID
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 删除 API Key 失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 删除模型 API Key
+      tags:
+      - 模型
+    put:
+      consumes:
+      - application/json
+      description: 按需更新名称、权重和启用状态；upgrade 为 true 时使用最新密钥重新加密 API Key。
+      parameters:
+      - description: 模型 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: API Key ID，不能为 0
+        in: path
+        name: api
+        required: true
+        type: integer
+      - description: 待更新的 API Key 配置
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/schema.UpdateApiKeyReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 缺少模型 ID 或 API Key ID
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 更新 API Key 失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 更新模型 API Key
+      tags:
+      - 模型
+  /secret:
+    post:
+      description: 生成新版本的加密密钥并追加保存到 .env，响应仅返回密钥版本。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 生成成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/schema.GenerateSecretRsp'
+              type: object
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 生成或保存密钥失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 生成加密密钥
+      tags:
+      - 密钥
+  /session:
+    get:
+      description: 按会话 ID 倒序返回当前用户的非临时会话，使用响应中的 offset 查询下一页。
+      parameters:
+      - description: 上一页返回的会话索引，首次查询不传
+        in: query
+        name: offset
+        type: string
+      - description: 最大返回数量，范围为 1 到 50
+        in: query
+        maximum: 50
+        minimum: 1
+        name: limit
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 会话列表
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/schema.GetSessionListRsp'
+              type: object
+        "400":
+          description: limit 不在允许范围内
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 查询会话失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 获取会话列表
+      tags:
+      - 会话
+  /session/{id}:
+    delete:
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 缺少会话 ID
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 删除会话失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 删除会话
+      tags:
+      - 会话
+  /session/{id}/input:
+    get:
+      description: 返回任务 ID 和提示内容，可使用任务 ID 作为 call_id 提交用户补充内容。
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 待补充输入列表
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/schema.WaitInputInfo'
+                  type: array
+              type: object
+        "400":
+          description: 缺少会话 ID
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 查询会话失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 获取待补充输入列表
+      tags:
+      - 会话
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 用户补充内容，call_id 和 content 必填
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/schema.InputRequiredReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 提交成功
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 缺少会话 ID、任务 ID 或补充内容
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 提交补充内容失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 提交用户补充内容
+      tags:
+      - 会话
+  /session/{id}/message:
+    get:
+      description: 按消息 ID 倒序返回历史消息，使用响应中的 offset 查询下一页；limit 为 0 或不传时不限制数量。
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 上一页返回的消息索引，首次查询不传
+        in: query
+        name: offset
+        type: string
+      - default: 0
+        description: 最大返回数量，0 表示不限制
+        in: query
+        minimum: 0
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 历史消息列表
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/schema.GetChatMessagesRsp'
+              type: object
+        "400":
+          description: 缺少会话 ID 或 limit 小于 0
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 查询历史消息失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 获取会话消息列表
+      tags:
+      - 会话
+    post:
+      consumes:
+      - application/json
+      description: 提交消息并启动模型任务；模型输出通过会话 SSE 事件流返回。
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 对话消息，content 必填
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/schema.ChatReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 消息已提交
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 缺少会话 ID 或消息内容
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 提交消息失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 发送会话消息
+      tags:
+      - 会话
+  /session/stream:
+    get:
+      description: |-
+        未传 id 时为当前用户创建临时会话，传入 id 时订阅已有会话。
+        首个 init 事件的 data 为会话 ID；后续事件包含 id、event、data，event 类型为 content、reasoning、hitl 或 end。
+        hitl 事件的 data 为包含 id 和 content 的 JSON 字符串；seq 用于断线重连，传入最后收到的事件序号。
+        建立事件流前的错误返回 JSON；事件流开始后的错误通过关闭连接结束，不再返回 JSON。
+      parameters:
+      - description: 会话 ID，不传则创建临时会话
+        in: query
+        name: id
+        type: string
+      - default: 0
+        description: 最后收到的 SSE 事件序号，0 表示首次连接
+        in: query
+        minimum: 0
+        name: seq
+        type: integer
+      produces:
+      - text/event-stream
+      - application/json
+      responses:
+        "200":
+          description: SSE 事件流
+          schema:
+            type: string
+        "401":
+          description: 缺少认证 Cookie
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 创建、查询会话或建立事件流失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 订阅会话事件流
+      tags:
+      - 会话
+swagger: "2.0"

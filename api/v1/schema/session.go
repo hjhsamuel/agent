@@ -28,8 +28,8 @@ type StreamReq struct {
 }
 
 type ChatReq struct {
-	ID      string `uri:"id"`       // 会话 id
-	Content string `json:"content"` // 对话消息
+	ID      string `uri:"id" swaggerignore:"true"` // 会话 id
+	Content string `json:"content"`                // 对话消息
 }
 
 type GetChatMessagesReq struct {
@@ -51,9 +51,9 @@ type MessageInfo struct {
 }
 
 type InputRequiredReq struct {
-	ID      string `uri:"id"`       // 会话 id
-	CallID  string `json:"call_id"` // 任务 id
-	Content string `json:"content"` // 用户补充内容
+	ID      string `uri:"id" swaggerignore:"true"` // 会话 id
+	CallID  string `json:"call_id"`                // 任务 id
+	Content string `json:"content"`                // 用户补充内容
 }
 
 type WaitInputListReq struct {

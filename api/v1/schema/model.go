@@ -35,20 +35,20 @@ type ApiKeyInfo struct {
 }
 
 type UpdateModelReq struct {
-	ID           string    `uri:"id"`             // 模型 id
-	Provider     *string   `json:"provider"`      // 供应商
-	Name         *string   `json:"name"`          // 模型名称
-	Url          *string   `json:"url"`           // 地址
-	Enable       *bool     `json:"enable"`        // 是否可用
-	ContextLimit *int64    `json:"context_limit"` // 上下文限制
-	Reasoning    *KeyValue `json:"reasoning"`     // 深度思考
+	ID           string    `uri:"id" swaggerignore:"true"` // 模型 id
+	Provider     *string   `json:"provider"`               // 供应商
+	Name         *string   `json:"name"`                   // 模型名称
+	Url          *string   `json:"url"`                    // 地址
+	Enable       *bool     `json:"enable"`                 // 是否可用
+	ContextLimit *int64    `json:"context_limit"`          // 上下文限制
+	Reasoning    *KeyValue `json:"reasoning"`              // 深度思考
 }
 
 type AddApiKeyReq struct {
-	ID     string `uri:"id"`      // model id
-	Key    string `json:"key"`    // api key
-	Weight int64  `json:"weight"` // 权重
-	Name   string `json:"name"`   // 名称，仅用于展示
+	ID     string `uri:"id" swaggerignore:"true"` // model id
+	Key    string `json:"key"`                    // api key
+	Weight int64  `json:"weight"`                 // 权重
+	Name   string `json:"name"`                   // 名称，仅用于展示
 }
 
 type DeleteApiKeyReq struct {
@@ -57,10 +57,10 @@ type DeleteApiKeyReq struct {
 }
 
 type UpdateApiKeyReq struct {
-	ID      string  `uri:"id"`       // 模型 id
-	Api     int64   `uri:"api"`      // api key id
-	Name    *string `json:"name"`    // 名称
-	Upgrade bool    `json:"upgrade"` // 密钥轮换
-	Weight  *int64  `json:"weight"`  // 权重
-	Enable  *bool   `json:"enable"`  // 是否可用
+	ID      string  `uri:"id" swaggerignore:"true"`  // 模型 id
+	Api     int64   `uri:"api" swaggerignore:"true"` // api key id
+	Name    *string `json:"name"`                    // 名称
+	Upgrade bool    `json:"upgrade"`                 // 密钥轮换
+	Weight  *int64  `json:"weight"`                  // 权重
+	Enable  *bool   `json:"enable"`                  // 是否可用
 }
