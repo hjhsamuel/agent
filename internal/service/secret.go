@@ -7,12 +7,10 @@ import (
 )
 
 func (s *Service) GenerateSecret() (int64, error) {
-	version, key, err := s.kms.GenerateKey()
-	if err != nil {
-		return 0, err
-	}
-
-	err = filex.AppendFile(".env", fmt.Sprintf("\nCAGENT_SECRET_V%d=%s\n", version, key))
+	version, err := s.kms.GenerateKey(func(version int64, key string) error {
+		w := fmt.Sprintf("\nCAGENT_SECRET_V%d=%s\n", version, key)
+		return filex.AppendFile(".env", w)
+	})
 	if err != nil {
 		return 0, err
 	}

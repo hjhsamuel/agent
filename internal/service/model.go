@@ -143,7 +143,7 @@ func (s *Service) DeleteApiKey(modelId string, apiKeyId int64) error {
 
 	return s.store.DeleteApiKey(
 		bson.M{"_id": id},
-		bson.M{"$pull": bson.M{"api_keys.id": apiKeyId}},
+		bson.M{"$pull": bson.M{"api_keys": bson.M{"id": apiKeyId}}},
 	)
 }
 

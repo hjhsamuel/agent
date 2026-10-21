@@ -15,10 +15,10 @@ type KMS struct {
 	latest int64
 }
 
-func (k *KMS) GenerateKey() (int64, string, error) {
+func (k *KMS) GenerateKey(f PersistFunc) (int64, error) {
 	key := make([]byte, KeyLength)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		return 0, "", err
+		return 0, err
 	}
 
 	k.lock.Lock()
@@ -26,14 +26,19 @@ func (k *KMS) GenerateKey() (int64, string, error) {
 
 	version := k.latest + 1
 	if _, ok := k.keys[version]; ok {
-		return 0, "", fmt.Errorf("kms: version %d already exists", version)
+		return 0, fmt.Errorf("kms: version %d already exists", version)
 	}
-	k.keys[version] = key
-	k.latest = version
 
 	encodedKey := base64.StdEncoding.EncodeToString(key)
 
-	return version, encodedKey, nil
+	if err := f(version, encodedKey); err != nil {
+		return 0, err
+	}
+
+	k.keys[version] = key
+	k.latest = version
+
+	return version, nil
 }
 
 func (k *KMS) GetKey(version int64) (string, error) {
