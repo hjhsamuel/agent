@@ -206,7 +206,7 @@ definitions:
 info:
   contact: {}
 paths:
-  /model:
+  /v1/model:
     get:
       produces:
       - application/json
@@ -275,7 +275,7 @@ paths:
       summary: 新增模型
       tags:
       - 模型
-  /model/{id}:
+  /v1/model/{id}:
     get:
       description: 返回指定模型的 API Key 元信息，不包含 API Key 明文。
       parameters:
@@ -355,7 +355,7 @@ paths:
       summary: 更新模型配置
       tags:
       - 模型
-  /model/{id}/key:
+  /v1/model/{id}/key:
     post:
       consumes:
       - application/json
@@ -401,7 +401,7 @@ paths:
       summary: 新增模型 API Key
       tags:
       - 模型
-  /model/{id}/key/{api}:
+  /v1/model/{id}/key/{api}:
     delete:
       parameters:
       - description: 模型 ID
@@ -483,7 +483,7 @@ paths:
       summary: 更新模型 API Key
       tags:
       - 模型
-  /secret:
+  /v1/secret:
     post:
       description: 生成新版本的加密密钥并追加保存到 .env，响应仅返回密钥版本。
       produces:
@@ -511,7 +511,7 @@ paths:
       summary: 生成加密密钥
       tags:
       - 密钥
-  /session:
+  /v1/session:
     get:
       description: 按会话 ID 倒序返回当前用户的非临时会话，使用响应中的 offset 查询下一页。
       parameters:
@@ -555,7 +555,7 @@ paths:
       summary: 获取会话列表
       tags:
       - 会话
-  /session/{id}:
+  /v1/session/{id}:
     delete:
       parameters:
       - description: 会话 ID
@@ -587,7 +587,7 @@ paths:
       summary: 删除会话
       tags:
       - 会话
-  /session/{id}/input:
+  /v1/session/{id}/input:
     get:
       description: 返回任务 ID 和提示内容，可使用任务 ID 作为 call_id 提交用户补充内容。
       parameters:
@@ -666,7 +666,7 @@ paths:
       summary: 提交用户补充内容
       tags:
       - 会话
-  /session/{id}/message:
+  /v1/session/{id}/message:
     get:
       description: 按消息 ID 倒序返回历史消息，使用响应中的 offset 查询下一页；limit 为 0 或不传时不限制数量。
       parameters:
@@ -754,7 +754,7 @@ paths:
       summary: 发送会话消息
       tags:
       - 会话
-  /session/stream:
+  /v1/session/stream:
     get:
       description: |-
         未传 id 时为当前用户创建临时会话，传入 id 时订阅已有会话。

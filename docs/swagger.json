@@ -4,7 +4,7 @@
         "contact": {}
     },
     "paths": {
-        "/model": {
+        "/v1/model": {
             "get": {
                 "security": [
                     {
@@ -122,7 +122,7 @@
                 }
             }
         },
-        "/model/{id}": {
+        "/v1/model/{id}": {
             "get": {
                 "security": [
                     {
@@ -251,7 +251,7 @@
                 }
             }
         },
-        "/model/{id}/key": {
+        "/v1/model/{id}/key": {
             "post": {
                 "security": [
                     {
@@ -327,7 +327,7 @@
                 }
             }
         },
-        "/model/{id}/key/{api}": {
+        "/v1/model/{id}/key/{api}": {
             "put": {
                 "security": [
                     {
@@ -454,7 +454,7 @@
                 }
             }
         },
-        "/secret": {
+        "/v1/secret": {
             "post": {
                 "security": [
                     {
@@ -503,7 +503,7 @@
                 }
             }
         },
-        "/session": {
+        "/v1/session": {
             "get": {
                 "security": [
                     {
@@ -575,7 +575,7 @@
                 }
             }
         },
-        "/session/stream": {
+        "/v1/session/stream": {
             "get": {
                 "security": [
                     {
@@ -629,7 +629,7 @@
                 }
             }
         },
-        "/session/{id}": {
+        "/v1/session/{id}": {
             "delete": {
                 "security": [
                     {
@@ -680,7 +680,7 @@
                 }
             }
         },
-        "/session/{id}/input": {
+        "/v1/session/{id}/input": {
             "get": {
                 "security": [
                     {
@@ -808,7 +808,7 @@
                 }
             }
         },
-        "/session/{id}/message": {
+        "/v1/session/{id}/message": {
             "get": {
                 "security": [
                     {

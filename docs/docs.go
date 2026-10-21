@@ -16,7 +16,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/model": {
+        "/v1/model": {
             "get": {
                 "security": [
                     {
@@ -134,7 +134,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/model/{id}": {
+        "/v1/model/{id}": {
             "get": {
                 "security": [
                     {
@@ -263,7 +263,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/model/{id}/key": {
+        "/v1/model/{id}/key": {
             "post": {
                 "security": [
                     {
@@ -339,7 +339,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/model/{id}/key/{api}": {
+        "/v1/model/{id}/key/{api}": {
             "put": {
                 "security": [
                     {
@@ -466,7 +466,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/secret": {
+        "/v1/secret": {
             "post": {
                 "security": [
                     {
@@ -515,7 +515,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/session": {
+        "/v1/session": {
             "get": {
                 "security": [
                     {
@@ -587,7 +587,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/session/stream": {
+        "/v1/session/stream": {
             "get": {
                 "security": [
                     {
@@ -641,7 +641,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/session/{id}": {
+        "/v1/session/{id}": {
             "delete": {
                 "security": [
                     {
@@ -692,7 +692,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/session/{id}/input": {
+        "/v1/session/{id}/input": {
             "get": {
                 "security": [
                     {
@@ -820,7 +820,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/session/{id}/message": {
+        "/v1/session/{id}/message": {
             "get": {
                 "security": [
                     {
