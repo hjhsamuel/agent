@@ -3,8 +3,10 @@ package filex
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -34,6 +36,8 @@ func Extract(ctx context.Context, src, dst string) error {
 		}
 	}
 
+	_ = os.MkdirAll(dst, os.ModePerm)
+
 	f, err := os.OpenFile(src, os.O_RDONLY, os.ModePerm)
 	if err != nil {
 		return err
@@ -41,9 +45,21 @@ func Extract(ctx context.Context, src, dst string) error {
 	defer f.Close()
 
 	return format.Extract(ctx, f, func(ctx context.Context, info archives.FileInfo) error {
-		path := filepath.Join(dst, info.NameInArchive)
+		name := strings.ReplaceAll(info.NameInArchive, "\\", "/")
+
+		if strings.HasPrefix(name, "/") ||
+			strings.Contains(name, ":") {
+			return fmt.Errorf("invalid path: %s", name)
+		}
+
+		name = path.Clean(name)
+		if name == ".." || strings.HasPrefix(name, "../") {
+			return fmt.Errorf("invalid path: %s", name)
+		}
+
+		fp := filepath.Join(dst, name)
 		if info.IsDir() {
-			_ = os.MkdirAll(path, os.ModePerm)
+			_ = os.MkdirAll(fp, os.ModePerm)
 		} else {
 			ff, err := info.Open()
 			if err != nil {
@@ -51,7 +67,7 @@ func Extract(ctx context.Context, src, dst string) error {
 			}
 			defer ff.Close()
 
-			w, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
+			w, err := os.OpenFile(fp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 			if err != nil {
 				return err
 			}
