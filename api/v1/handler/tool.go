@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/agent/api/common"
@@ -30,7 +31,9 @@ func (a *Api) AddTool(c *gin.Context) {
 		return
 	}
 
-	id, err := a.srv.AddTool(req.Name, req.Kind, req.Url)
+	auth := common.GetAuth(c)
+
+	id, err := a.srv.AddTool(strconv.Itoa(auth.ID), req.Name, req.Kind, req.Url)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
