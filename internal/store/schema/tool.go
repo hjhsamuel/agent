@@ -14,7 +14,7 @@ type Tool struct {
 	Url       string        `bson:"url"`  // local/skill：压缩包下载地址；a2a/mcp：远端服务地址
 	Type      ToolType      `bson:"type"`
 	Hash      *HashInfo     `bson:"hash"` // 仅用于本地工具校验
-	Enable    bool          `bson:"enable"`
+	State     ToolStatus    `bson:"state"`
 	CreatedAt time.Time     `bson:"created_at"`
 	Creator   string        `bson:"creator"`
 }
@@ -39,4 +39,12 @@ const (
 	HashMD5    HashType = iota // md5
 	HashSHA256                 // sha256
 	HashXXH3                   // xxh3
+)
+
+type ToolStatus int
+
+const (
+	ToolStatusLoading ToolStatus = iota // 准备中
+	ToolStatusOnline
+	ToolStatusOffline
 )

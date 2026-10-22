@@ -10,12 +10,11 @@ import (
 	"google.golang.org/adk/v2/session"
 )
 
-func NewA2A(path string) (agent.Agent, error) {
-	card, err := agentcard.DefaultResolver.Resolve(context.Background(), path)
-	if err != nil {
-		return nil, err
-	}
+func ResolveCard(ctx context.Context, path string) (*a2a.AgentCard, error) {
+	return agentcard.DefaultResolver.Resolve(ctx, path)
+}
 
+func NewA2A(card *a2a.AgentCard) (agent.Agent, error) {
 	return remoteagent.NewA2A(remoteagent.A2AConfig{
 		Name:        card.Name,
 		Description: card.Description,

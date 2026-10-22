@@ -373,6 +373,7 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 	obj, err := s.store.FindOneAndUpdateSession(
 		bson.M{
 			"_id":   sessionId,
+			"user":  user,
 			"state": schema.SessionWait,
 			"wait":  bson.M{"$elemMatch": bson.M{"id": toolCallId, "content": ""}},
 		},

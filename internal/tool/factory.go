@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"sync"
 
 	"github.com/hjhsamuel/agent/internal/tool/a2ax"
 	"github.com/hjhsamuel/agent/internal/tool/local"
@@ -15,6 +16,8 @@ import (
 )
 
 type Factory struct {
+	lock sync.RWMutex
+
 	localTools   []tool.Tool
 	mcpTransport []mcp.Transport
 	a2aAgent     []agent.Agent
@@ -30,20 +33,35 @@ func (f *Factory) init() {
 
 func (f *Factory) AddMcp(path string) error {
 	transport := mcpx.NewTransport(path)
+
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
 	f.mcpTransport = append(f.mcpTransport, transport)
 	return nil
 }
 
 func (f *Factory) AddA2A(path string) error {
-	agt, err := a2ax.NewA2A(path)
+	card, err := a2ax.ResolveCard(context.Background(), path)
 	if err != nil {
 		return err
 	}
+	agt, err := a2ax.NewA2A(card)
+	if err != nil {
+		return err
+	}
+
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
 	f.a2aAgent = append(f.a2aAgent, agt)
 	return nil
 }
 
 func (f *Factory) All(user string) *Pack {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
 	pack := Pack{
 		Tools:     f.localTools,
 		SubAgents: f.a2aAgent,
