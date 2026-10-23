@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -11,9 +12,7 @@ import (
 	"github.com/hjhsamuel/agent/internal/service/prompts"
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
-	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
 	"google.golang.org/adk/v2/runner"
@@ -93,92 +92,10 @@ func (s *Service) Run(user, id string, content string) error {
 		return errors.New("invalid session")
 	}
 
-	objs, err := s.store.FindSession(bson.M{
-		"_id":   sessionId,
-		"user":  user,
-		"state": bson.M{"$in": []schema.SessionStatus{schema.SessionDone, schema.SessionTemp}},
-	})
-	if err != nil {
-		return err
-	}
-	if len(objs) == 0 {
-		return errors.New("session not found")
-	}
-
 	ctx, producer, err := s.acquireProducer(sessionId.Hex())
 	if err != nil {
 		return err
 	}
-
-	// 多轮对话、首次对话
-	obj, err := s.store.FindOneAndUpdateSession(
-		bson.M{
-			"_id":   sessionId,
-			"state": bson.M{"$in": []schema.SessionStatus{schema.SessionDone, schema.SessionTemp}},
-			"user":  user,
-		},
-		bson.M{"$set": bson.M{
-			"state":      schema.SessionRunning,
-			"updated_at": time.Now(),
-		}},
-		options.FindOneAndUpdate().SetProjection(bson.M{"state": 1}),
-	)
-	if err != nil {
-		s.cancel(sessionId.Hex())
-		return err
-	}
-
-	// 添加消息
-	_ = s.store.AddMessage(&schema.Message{
-		Session:   sessionId,
-		Role:      schema.RoleUser,
-		Content:   content,
-		CreatedAt: time.Now(),
-	})
-
-	msg := genai.NewContentFromText(content, genai.RoleUser)
-	s.wg.Add(1)
-	go s.newTurn(ctx, producer, user, sessionId, msg, obj.State == schema.SessionTemp)
-
-	return nil
-}
-
-func (s *Service) notifyTurnFailure(
-	producer *ringbuffer.RingBufferProducer,
-	content string,
-	sessionId bson.ObjectID,
-) {
-	_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
-		Type: ringbuffer.SSEChunkTypeError,
-		Data: content,
-	})
-	_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
-		Type: ringbuffer.SSEChunkTypeEnd,
-	})
-
-	_ = s.store.UpdateSession(
-		bson.M{"_id": sessionId, "state": schema.SessionRunning},
-		bson.M{"$set": bson.M{"state": schema.SessionDone}},
-	)
-}
-
-func (s *Service) newTurn(
-	ctx context.Context,
-	producer *ringbuffer.RingBufferProducer,
-	user string,
-	sessionId bson.ObjectID,
-	msg *genai.Content,
-	isFirst bool,
-) {
-	defer s.wg.Done()
-	defer s.cancel(sessionId.Hex())
-
-	var turnErr error
-	defer func() {
-		if turnErr != nil {
-			s.notifyTurnFailure(producer, turnErr.Error(), sessionId)
-		}
-	}()
 
 	r, err := s.getRunner(
 		user,
@@ -189,10 +106,42 @@ func (s *Service) newTurn(
 		},
 	)
 	if err != nil {
-		logrus.WithField("Session", sessionId).WithError(err).Error("create agent")
-		turnErr = err
-		return
+		s.cancel(sessionId.Hex())
+		return err
 	}
+
+	// 多轮对话、首次对话
+	state, turnId, err := s.store.AddMessage(&schema.Message{
+		Session:   sessionId,
+		Turn:      0,
+		Seq:       0,
+		Role:      schema.RoleUser,
+		Content:   content,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		s.cancel(sessionId.Hex())
+		return err
+	}
+
+	msg := genai.NewContentFromText(content, genai.RoleUser)
+	s.wg.Add(1)
+	go s.newTurn(ctx, producer, user, sessionId, turnId, r, msg, state == schema.SessionTemp)
+
+	return nil
+}
+
+func (s *Service) newTurn(
+	ctx context.Context,
+	producer *ringbuffer.RingBufferProducer,
+	user string,
+	sessionId bson.ObjectID,
+	turnId int64,
+	r *runner.Runner,
+	msg *genai.Content,
+	isFirst bool,
+) {
+	defer s.wg.Done()
 
 	if isFirst {
 		if msg != nil && len(msg.Parts) != 0 && msg.Parts[0].Text != "" {
@@ -204,73 +153,76 @@ func (s *Service) newTurn(
 		}
 	}
 
-	message := msg
+	waitInputs, err := s.run(ctx, user, sessionId, turnId, r, producer, msg)
+	if err != nil {
+		goto Error
+	}
+	goto Success
 
-	for {
-		next, err := s.run(ctx, user, sessionId, r, producer, message)
-		if err != nil {
-			logrus.WithField("Session", sessionId).WithError(err).Error("run agent")
-			turnErr = err
-			return
-		}
-		if !next {
-			_ = s.store.UpdateSession(
-				bson.M{"_id": sessionId},
-				bson.M{"$set": bson.M{"state": schema.SessionDone, "wait": []*schema.WaitInput{}}},
-			)
-			return
-		}
+Error:
+	s.cancel(sessionId.Hex())
 
-		// 等待用户输入
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(time.Second * 10):
+	_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
+		Type: ringbuffer.SSEChunkTypeError,
+		Data: err.Error(),
+	})
+	_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
+		Type: ringbuffer.SSEChunkTypeEnd,
+	})
 
-		}
+	_, _, _ = s.store.AddMessage(&schema.Message{
+		Session:   sessionId,
+		Turn:      turnId,
+		Role:      schema.RoleError,
+		Content:   err.Error(),
+		CreatedAt: time.Now(),
+	})
+	_ = s.store.UpdateSession(
+		bson.M{"_id": sessionId, "state": schema.SessionRunning},
+		bson.M{"$set": bson.M{"state": schema.SessionDone}},
+	)
 
-		obj, err := s.store.FindOneAndUpdateSession(
-			bson.M{"_id": sessionId, "state": schema.SessionInputted},
-			bson.M{
-				"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()},
-				//"$unset": bson.M{"wait": 1},
-			},
+	return
+
+Success:
+	s.cancel(sessionId.Hex())
+
+	if len(waitInputs) != 0 {
+		_ = s.store.UpdateSession(
+			bson.M{"_id": sessionId, "state": schema.SessionRunning},
+			bson.M{"$set": bson.M{"state": schema.SessionWait, "wait": waitInputs}},
 		)
-		if err != nil {
-			return
-		}
 
-		parts := make([]*genai.Part, 0, len(obj.Wait))
-		for _, item := range obj.Wait {
-			parts = append(parts, &genai.Part{
-				FunctionResponse: &genai.FunctionResponse{
-					ID:   item.ID,
-					Name: toolconfirmation.FunctionCallName,
-					Response: map[string]any{
-						"confirmed": true,
-						"payload":   item.Content,
-					},
-				},
+		for _, item := range waitInputs {
+			_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
+				Type: ringbuffer.SSEChunkTypeHumanInTheLoop,
+				Data: ringbuffer.HITLEvent{ID: item.ID, Content: item.Hint}.ToData(),
 			})
 		}
-		message = buildInputRequiredMessage(obj.Wait)
+	} else {
+		_ = s.store.UpdateSession(
+			bson.M{"_id": sessionId},
+			bson.M{"$set": bson.M{"state": schema.SessionDone, "wait": []*schema.WaitInput{}}},
+		)
 	}
+	return
 }
 
 func (s *Service) run(
 	ctx context.Context,
 	user string,
 	sessionId bson.ObjectID,
+	turnId int64,
 	r *runner.Runner,
 	producer *ringbuffer.RingBufferProducer,
 	msg *genai.Content,
-) (bool, error) {
+) ([]*schema.WaitInput, error) {
 	inputRequiredReqs := make([]*schema.WaitInput, 0)
 
 	events := r.Run(ctx, user, sessionId.Hex(), msg, agent.RunConfig{StreamingMode: agent.StreamingModeSSE})
 	for event, err := range events {
 		if err != nil {
-			return false, err
+			return nil, err
 		}
 
 		if event == nil {
@@ -331,15 +283,17 @@ func (s *Service) run(
 					continue
 				}
 				inputRequiredReqs = append(inputRequiredReqs, &schema.WaitInput{
-					ID:   part.FunctionCall.ID,
-					Hint: confirmation.Hint,
+					ID:        part.FunctionCall.ID,
+					Hint:      confirmation.Hint,
+					CreatedAt: time.Now(),
 				})
 			}
 		}
 		// 添加展示信息
 		if content.Len() != 0 {
-			_ = s.store.AddMessage(&schema.Message{
+			_, _, _ = s.store.AddMessage(&schema.Message{
 				Session:   sessionId,
+				Turn:      turnId,
 				Role:      schema.RoleAssistant,
 				Content:   content.String(),
 				CreatedAt: time.Now(),
@@ -347,22 +301,7 @@ func (s *Service) run(
 		}
 	}
 
-	if len(inputRequiredReqs) != 0 {
-		_ = s.store.UpdateSession(
-			bson.M{"_id": sessionId, "state": schema.SessionRunning},
-			bson.M{"$set": bson.M{"state": schema.SessionWait, "wait": inputRequiredReqs}},
-		)
-		for _, item := range inputRequiredReqs {
-			_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
-				Type: ringbuffer.SSEChunkTypeHumanInTheLoop,
-				Data: ringbuffer.HITLEvent{ID: item.ID, Content: item.Hint}.ToData(),
-			})
-		}
-
-		return true, nil
-	}
-
-	return false, nil
+	return inputRequiredReqs, nil
 }
 
 func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, content string) error {
@@ -370,6 +309,7 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 	if err != nil {
 		return err
 	}
+
 	obj, err := s.store.FindOneAndUpdateSession(
 		bson.M{
 			"_id":   sessionId,
@@ -377,14 +317,19 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 			"state": schema.SessionWait,
 			"wait":  bson.M{"$elemMatch": bson.M{"id": toolCallId, "content": ""}},
 		},
-		bson.M{"$set": bson.M{"wait.$.content": content}},
+		bson.M{"$set": bson.M{"wait.$.content": content, "wait.$.updated_at": time.Now()}},
 	)
 	if err != nil {
 		return err
 	}
 
+	turnId := obj.TurnSeq - 1
+
 	// 检查是否补充完毕
-	parts := make([]*genai.Part, 0, len(obj.Wait))
+	var (
+		parts    = make([]*genai.Part, 0, len(obj.Wait))
+		messages = make([]*schema.Message, 0)
+	)
 	for _, item := range obj.Wait {
 		if item.ID == toolCallId {
 			parts = append(parts, &genai.Part{
@@ -396,6 +341,13 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 						"payload":   content,
 					},
 				},
+			})
+			messages = append(messages, &schema.Message{
+				Session:   sessionId,
+				Turn:      turnId,
+				Role:      schema.RoleUser,
+				Content:   fmt.Sprintf("> %s \n\n%s", item.Hint, content),
+				CreatedAt: item.UpdatedAt,
 			})
 			continue
 		}
@@ -414,39 +366,42 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 				},
 			},
 		})
+		messages = append(messages, &schema.Message{
+			Session:   sessionId,
+			Turn:      turnId,
+			Role:      schema.RoleUser,
+			Content:   fmt.Sprintf("> %s \n\n%s", item.Hint, item.Content),
+			CreatedAt: item.UpdatedAt,
+		})
 	}
-	err = s.store.UpdateSession(
-		bson.M{"_id": sessionId, "state": schema.SessionWait},
-		bson.M{"$set": bson.M{"state": schema.SessionInputted}},
-	)
+
+	ctx, producer, err := s.acquireProducer(id)
 	if err != nil {
 		return nil
 	}
 
-	for i := 0; i < 3; i++ {
-		if !s.lifeExists(id) {
-			ctx, producer, err := s.acquireProducer(id)
-			if err != nil {
-				return err
-			}
-
-			// 再次校验会话状态
-			_, err = s.store.FindOneAndUpdateSession(
-				bson.M{"_id": sessionId, "state": schema.SessionInputted},
-				bson.M{"$set": bson.M{"state": schema.SessionRunning}},
-			)
-			if err != nil {
-				s.cancel(id)
-				return err
-			}
-
-			msg := &genai.Content{Role: genai.RoleUser, Parts: parts}
-			s.wg.Add(1)
-			go s.newTurn(ctx, producer, user, sessionId, msg, false)
-			return nil
-		}
-		time.Sleep(time.Second * 3)
+	r, err := s.getRunner(
+		user,
+		&AgentConfig{
+			Name:        schema.MainAgentName,
+			Description: "main agent",
+			Prompt:      prompts.SystemPrompt,
+		},
+	)
+	if err != nil {
+		s.cancel(id)
+		return err
 	}
-	// 原协程仍在运行，直接退出
+
+	err = s.store.FinishWaitInput(sessionId, messages...)
+	if err != nil {
+		s.cancel(id)
+		return nil
+	}
+
+	msg := &genai.Content{Role: genai.RoleUser, Parts: parts}
+	s.wg.Add(1)
+	go s.newTurn(ctx, producer, user, sessionId, turnId, r, msg, false)
+
 	return nil
 }

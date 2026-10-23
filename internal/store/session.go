@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -47,7 +48,64 @@ func (d *Store) CreateTempSession(obj *schema.Session) (bson.ObjectID, error) {
 	return id, nil
 }
 
-func (d *Store) AddMessage(obj *schema.Message) error {
+func (d *Store) AddMessage(obj *schema.Message) (schema.SessionStatus, int64, error) {
+	var state schema.SessionStatus
+	if obj.Turn == 0 {
+		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
+			context.Background(),
+			bson.M{
+				"_id":   obj.Session,
+				"state": bson.M{"$in": []schema.SessionStatus{schema.SessionDone, schema.SessionTemp}},
+			},
+			bson.M{
+				"$inc": bson.M{"turn_seq": 1, "msg_seq": 1},
+				"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()},
+			},
+			options.FindOneAndUpdate().SetProjection(bson.M{"turn_seq": 1, "msg_seq": 1, "state": 1}),
+		)
+		if err := result.Err(); err != nil {
+			return 0, 0, err
+		}
+
+		var sessionObj schema.Session
+		if err := result.Decode(&sessionObj); err != nil {
+			return 0, 0, err
+		}
+
+		state = sessionObj.State
+
+		obj.Turn = sessionObj.TurnSeq
+		obj.Seq = sessionObj.MsgSeq
+	} else {
+		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
+			context.Background(),
+			bson.M{"_id": obj.Session},
+			bson.M{"$inc": bson.M{"msg_seq": 1}},
+			options.FindOneAndUpdate().SetProjection(bson.M{"msg_seq": 1, "state": 1}),
+		)
+		if err := result.Err(); err != nil {
+			return 0, 0, err
+		}
+
+		var sessionObj schema.Session
+		if err := result.Decode(&sessionObj); err != nil {
+			return 0, 0, err
+		}
+
+		state = sessionObj.State
+
+		obj.Seq = sessionObj.MsgSeq
+	}
+
+	_, err := d.getCollection(schema.MessageCollection).InsertOne(context.Background(), obj)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return state, obj.Turn, nil
+}
+
+func (d *Store) FinishWaitInput(sessionId bson.ObjectID, messages ...*schema.Message) error {
 	ctx := context.Background()
 
 	session, err := d.StartSession()
@@ -59,30 +117,34 @@ func (d *Store) AddMessage(obj *schema.Message) error {
 	_, err = session.WithTransaction(ctx, func(sc context.Context) (any, error) {
 		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
 			sc,
-			bson.M{"_id": obj.Session},
-			bson.M{"$inc": bson.M{"message_seq": 1}},
+			bson.M{"_id": sessionId, "state": schema.SessionInputted},
+			bson.M{
+				"$set": bson.M{
+					"state":      schema.SessionRunning,
+					"wait":       []*schema.WaitInput{},
+					"updated_at": time.Now(),
+				},
+				"$inc": bson.M{"msg_seq": len(messages)},
+			},
+			options.FindOneAndUpdate().SetProjection(bson.M{"msg_seq": 1}),
 		)
 		if err = result.Err(); err != nil {
 			return nil, err
 		}
 
-		var sessionObj schema.Session
-		if err = result.Decode(&sessionObj); err != nil {
+		var obj schema.Session
+		if err = result.Decode(&obj); err != nil {
 			return nil, err
 		}
 
-		obj.Sequence = sessionObj.MessageSeq
-		_, err = d.getCollection(schema.MessageCollection).InsertOne(sc, obj)
-		if err != nil {
-			return nil, err
+		for i := 0; i < len(messages); i++ {
+			messages[i].Seq = obj.MsgSeq + int64(i)
 		}
 
-		return nil, nil
+		_, err = d.getCollection(schema.MessageCollection).InsertMany(sc, messages)
+		return nil, err
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (d *Store) FindOneAndUpdateSession(

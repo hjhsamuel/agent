@@ -2,7 +2,7 @@ package schema
 
 import "go.mongodb.org/mongo-driver/v2/bson"
 
-const ModelCollection = "model"
+const ModelCollection = "cagent_model"
 
 type ModelKind string
 

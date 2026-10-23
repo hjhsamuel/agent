@@ -7,23 +7,26 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-const SessionCollection = "session"
+const SessionCollection = "cagent_session"
 
 type Session struct {
-	ID         bson.ObjectID `bson:"_id,omitempty"`
-	User       string        `bson:"user"`
-	Name       string        `bson:"name"`
-	State      SessionStatus `bson:"state"`
-	MessageSeq int64         `bson:"message_seq"`
-	CreatedAt  time.Time     `bson:"created_at"`
-	UpdatedAt  time.Time     `bson:"updated_at"`
-	Wait       []*WaitInput  `bson:"wait"` // input_required 信息
+	ID        bson.ObjectID `bson:"_id,omitempty"`
+	User      string        `bson:"user"`
+	Name      string        `bson:"name"`
+	State     SessionStatus `bson:"state"`
+	TurnSeq   int64         `bson:"turn_seq"`
+	MsgSeq    int64         `bson:"msg_seq"`
+	CreatedAt time.Time     `bson:"created_at"`
+	UpdatedAt time.Time     `bson:"updated_at"`
+	Wait      []*WaitInput  `bson:"wait"` // input_required 信息
 }
 
 type WaitInput struct {
-	ID      string `bson:"id"`
-	Hint    string `bson:"hint"`    // 传递给用户的提示信息
-	Content string `bson:"content"` // 用户输入的补充信息
+	ID        string    `bson:"id"`
+	Hint      string    `bson:"hint"`    // 传递给用户的提示信息
+	Content   string    `bson:"content"` // 用户输入的补充信息
+	CreatedAt time.Time `bson:"created_at"`
+	UpdatedAt time.Time `bson:"updated_at"`
 }
 
 type SessionStatus int
@@ -37,12 +40,13 @@ const (
 	SessionDeleted                       // 被删除
 )
 
-const MessageCollection = "message"
+const MessageCollection = "cagent_message"
 
 type Message struct {
 	ID        bson.ObjectID `bson:"_id,omitempty"`
 	Session   bson.ObjectID `bson:"session"`
-	Sequence  int64         `bson:"sequence"`
+	Turn      int64         `bson:"turn"`
+	Seq       int64         `bson:"seq"`
 	Role      Role          `bson:"role"`
 	Content   string        `bson:"content"`
 	CreatedAt time.Time     `bson:"created_at"`
@@ -55,13 +59,10 @@ const (
 	RoleUser      Role = "user"
 	RoleAssistant Role = "assistant"
 	RoleTool      Role = "tool"
-)
 
-type Part struct {
-	Content    []byte `bson:"content"`
-	ToolCallID string `bson:"tool_call_id"`
-	ToolName   string `bson:"tool_name"`
-}
+	// RoleError 服务错误专用，不是模型内部角色
+	RoleError Role = "error"
+)
 
 type Usage struct {
 	InputTokens         int64 `bson:"input_tokens"`

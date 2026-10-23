@@ -34,17 +34,21 @@ type ChatReq struct {
 
 type GetChatMessagesReq struct {
 	ID     string `uri:"id"`      // 会话 id
-	Offset string `form:"offset"` // 消息索引，默认为空
-	Limit  int    `form:"limit"`  // 最大数量
+	Offset int64  `form:"offset"` // 消息索引，默认为0
+	Limit  int    `form:"limit"`  // 最大轮次数量
 }
 
 type GetChatMessagesRsp struct {
-	Offset string         `json:"offset"` // 消息索引
+	Offset int64          `json:"offset"` // 消息索引
 	Data   []*MessageInfo `json:"data"`
 }
 
+type TurnMessage struct {
+	Offset  int64          `json:"offset"`
+	Message []*MessageInfo `json:"message"`
+}
+
 type MessageInfo struct {
-	ID        string `json:"id"`         // 消息 id
 	Role      string `json:"role"`       // 角色
 	Content   string `json:"content"`    // 内容
 	CreatedAt int64  `json:"created_at"` // 创建时间

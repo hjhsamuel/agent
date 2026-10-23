@@ -259,15 +259,15 @@ func (a *Api) InputRequired(c *gin.Context) {
 
 // GetChatMessages 分页获取会话的历史消息。
 // @Summary 获取会话消息列表
-// @Description 按消息 ID 倒序返回历史消息，使用响应中的 offset 查询下一页；limit 为 0 或不传时不限制数量。
+// @Description 按消息 ID 倒序返回历史消息，使用响应中的 offset 查询下一页。
 // @Tags 会话
 // @Produce json
 // @Security CookieAuth
 // @Param id path string true "会话 ID"
-// @Param offset query string false "上一页返回的消息索引，首次查询不传"
-// @Param limit query int false "最大返回数量，0 表示不限制" default(0) minimum(0)
+// @Param offset query int false "上一页返回的消息索引，首次查询不传"
+// @Param limit query int false "最大返回数量"
 // @Success 200 {object} common.Response{data=entities.GetChatMessagesRsp} "历史消息列表"
-// @Failure 400 {object} common.Response "缺少会话 ID 或 limit 小于 0"
+// @Failure 400 {object} common.Response "缺少会话 ID 或 limit 小于等于 0"
 // @Failure 401 {object} common.Response "缺少认证 Cookie"
 // @Failure 500 {object} common.Response "查询历史消息失败"
 // @Router /v1/session/{id}/message [get]
@@ -276,7 +276,7 @@ func (a *Api) GetChatMessages(c *gin.Context) {
 	_ = c.ShouldBindUri(&req)
 	_ = c.ShouldBindQuery(&req)
 
-	if req.ID == "" || req.Limit < 0 {
+	if req.ID == "" || req.Limit <= 0 {
 		c.JSON(http.StatusBadRequest, &common.Response{
 			Code:    http.StatusBadRequest,
 			Message: "invalid argument: id, limit is required",
@@ -298,9 +298,8 @@ func (a *Api) GetChatMessages(c *gin.Context) {
 		Data:   make([]*entities.MessageInfo, 0),
 	}
 	for _, item := range objs {
-		rsp.Offset = item.ID.Hex()
+		rsp.Offset = item.Seq
 		rsp.Data = append(rsp.Data, &entities.MessageInfo{
-			ID:        item.ID.Hex(),
 			Role:      string(item.Role),
 			Content:   item.Content,
 			CreatedAt: item.CreatedAt.Unix(),

@@ -42,10 +42,11 @@ func (s *Service) GetSessionList(user string, offset string, limit int) ([]*sche
 
 func (s *Service) CreateSession(user string) (string, error) {
 	id, err := s.store.CreateTempSession(&schema.Session{
-		User:       user,
-		State:      schema.SessionTemp,
-		MessageSeq: 1,
-		CreatedAt:  time.Now(),
+		User:      user,
+		State:     schema.SessionTemp,
+		TurnSeq:   1,
+		MsgSeq:    1,
+		CreatedAt: time.Now(),
 	})
 	if err != nil {
 		return "", err
@@ -165,7 +166,7 @@ func (s *Service) DeleteSession(user, id string) error {
 
 func (s *Service) GetSessionMessages(
 	id string,
-	offset string,
+	offset int64,
 	limit int,
 ) ([]*schema.Message, error) {
 	sessionId, err := bson.ObjectIDFromHex(id)
@@ -176,12 +177,8 @@ func (s *Service) GetSessionMessages(
 	filter := bson.M{
 		"session": sessionId,
 	}
-	if offset != "" {
-		mid, err := bson.ObjectIDFromHex(offset)
-		if err != nil {
-			return nil, err
-		}
-		filter["_id"] = bson.M{"$lt": mid}
+	if offset != 0 {
+		filter["seq"] = bson.M{"$lt": offset}
 	}
 
 	return s.store.GetMessages(

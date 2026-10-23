@@ -6,7 +6,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-const ToolCollection = "tool"
+const ToolCollection = "cagent_tool"
 
 type Tool struct {
 	ID        bson.ObjectID `bson:"_id,omitempty"`

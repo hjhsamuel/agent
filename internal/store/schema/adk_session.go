@@ -7,10 +7,10 @@ import (
 )
 
 const (
-	ADKSessionCollection      = "adk_session"
-	ADKSessionEventCollection = "adk_session_event"
-	ADKAppStateCollection     = "adk_app_state"
-	ADKUserStateCollection    = "adk_user_state"
+	ADKSessionCollection      = "cagent_adk_session"
+	ADKSessionEventCollection = "cagent_adk_event"
+	ADKAppStateCollection     = "cagent_adk_app_state"
+	ADKUserStateCollection    = "cagent_adk_user_state"
 )
 
 // ADKState stores JSON values as BSON binary. Keys are prefixed with "k" and

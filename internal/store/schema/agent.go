@@ -11,7 +11,7 @@ const (
 	RunnerName    = "CAGENT"
 )
 
-const AgentGroupCollection = "agent_group"
+const AgentGroupCollection = "cagent_agent_group"
 
 type AgentGroup struct {
 	ID          bson.ObjectID `bson:"_id,omitempty"`
