@@ -38,7 +38,7 @@ const (
 	SSEChunkTypeInit           SSEChunkType = "init"
 	SSEChunkTypeData           SSEChunkType = "content"
 	SSEChunkTypeReasoning      SSEChunkType = "reasoning"
-	SSEChunkTypeEnd            SSEChunkType = "end"  // Ends a complete logical chunk; Data must be empty.
+	SSEChunkTypeEnd            SSEChunkType = "end"  // Ends a completed turn; Data must be empty.
 	SSEChunkTypeHumanInTheLoop SSEChunkType = "hitl" // Requests human intervention; Data may carry details.
 	SSEChunkTypeError          SSEChunkType = "error"
 )

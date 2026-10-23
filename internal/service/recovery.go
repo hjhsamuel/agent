@@ -50,7 +50,6 @@ func (s *Service) recoverSession(obj *schema.Session) error {
 		return err
 	}
 
-	s.wg.Add(1)
 	go s.newTurn(ctx, producer, obj.User, obj.ID, obj.TurnSeq-1, r, msg, false)
 
 	return nil

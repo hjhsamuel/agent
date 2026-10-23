@@ -71,12 +71,21 @@ func (s *Service) getRunner(user string, cfg *AgentConfig) (*runner.Runner, erro
 }
 
 func (s *Service) acquireProducer(id string) (*sessionLife, *ringbuffer.RingBufferProducer, error) {
+	s.lifecycleMu.Lock()
+	if s.stopping.Load() {
+		s.lifecycleMu.Unlock()
+		return nil, nil, errors.New("service is shutting down")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	life := &sessionLife{Context: ctx, cancel: cancel}
 	if s.setLife(id, life) {
+		s.lifecycleMu.Unlock()
 		cancel()
 		return nil, nil, errors.New("session already running")
 	}
+	// Register before Close can start waiting, including synchronous setup work.
+	s.wg.Add(1)
+	s.lifecycleMu.Unlock()
 
 	producer, err := s.rbs.AcquireProducer(ctx, id)
 	if err != nil {
@@ -125,7 +134,6 @@ func (s *Service) Run(user, id string, content string) error {
 	}
 
 	msg := genai.NewContentFromText(content, genai.RoleUser)
-	s.wg.Add(1)
 	go s.newTurn(ctx, producer, user, sessionId, turnId, r, msg, state == schema.SessionTemp)
 
 	return nil
@@ -141,20 +149,31 @@ func (s *Service) newTurn(
 	msg *genai.Content,
 	isFirst bool,
 ) {
-	defer s.wg.Done()
 	defer s.finishLife(sessionId.Hex(), ctx)
+	if ctx.Err() != nil {
+		return
+	}
 
 	if isFirst {
 		if msg != nil && len(msg.Parts) != 0 && msg.Parts[0].Text != "" {
-			name, err := s.ExtractSessionTopic(msg.Parts[0].Text)
+			name, err := s.ExtractSessionTopic(ctx, msg.Parts[0].Text)
 			if err != nil {
 				name = "新对话"
+			}
+			if ctx.Err() != nil {
+				return
 			}
 			_ = s.store.UpdateSession(bson.M{"_id": sessionId}, bson.M{"$set": bson.M{"name": name}})
 		}
 	}
 
 	waitInputs, err := s.run(ctx, user, sessionId, turnId, r, producer, msg)
+	// Shutdown is an interruption, not a completed/failed turn. Preserve the
+	// persisted running state so Start can resume it, even if the runner ended
+	// without returning a cancellation error.
+	if s.stopping.Load() && ctx.Err() != nil {
+		return
+	}
 	if err != nil {
 		goto Error
 	}
@@ -186,10 +205,13 @@ Error:
 
 Success:
 	if len(waitInputs) != 0 {
-		_ = s.store.UpdateSession(
+		err = s.store.UpdateSession(
 			bson.M{"_id": sessionId, "state": schema.SessionRunning},
 			bson.M{"$set": bson.M{"state": schema.SessionWait, "wait": waitInputs}},
 		)
+		if err != nil {
+			goto Error
+		}
 
 		s.releaseLife(sessionId.Hex(), ctx)
 		for _, item := range waitInputs {
@@ -199,11 +221,15 @@ Success:
 			})
 		}
 	} else {
-		_ = s.store.UpdateSession(
+		err = s.store.UpdateSession(
 			bson.M{"_id": sessionId},
 			bson.M{"$set": bson.M{"state": schema.SessionDone, "wait": []*schema.WaitInput{}}},
 		)
+		if err != nil {
+			goto Error
+		}
 		s.releaseLife(sessionId.Hex(), ctx)
+		_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{Type: ringbuffer.SSEChunkTypeEnd})
 	}
 	return
 }
@@ -265,7 +291,6 @@ func (s *Service) run(
 			// 只将来自主 agent 的模型信息进行保存
 			if !part.Thought && event.Content.Role == "model" && part.Text != "" && event.Author == schema.MainAgentName {
 				content.WriteString(part.Text)
-				_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{Type: ringbuffer.SSEChunkTypeEnd})
 			}
 
 			// 处理 input_required
@@ -291,13 +316,16 @@ func (s *Service) run(
 		}
 		// 添加展示信息
 		if content.Len() != 0 {
-			_, _, _ = s.store.AddMessage(&schema.Message{
+			_, _, err := s.store.AddMessage(&schema.Message{
 				Session:   sessionId,
 				Turn:      turnId,
 				Role:      schema.RoleAssistant,
 				Content:   content.String(),
 				CreatedAt: time.Now(),
 			})
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -400,7 +428,6 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 	}
 
 	msg := &genai.Content{Role: genai.RoleUser, Parts: parts}
-	s.wg.Add(1)
 	go s.newTurn(ctx, producer, user, sessionId, turnId, r, msg, false)
 
 	return nil

@@ -147,11 +147,14 @@ Execute the following JavaScript in the `mongosh` session opened above. The scri
 creation can be repeated when the name and definition match an existing index; existing data must satisfy the unique
 constraints.
 
+The collection names below match the `cagent_*` names used by the application. If an older initialization script
+created unprefixed collections, run this script to provision the indexes on the actual application collections.
+
 ```javascript
 const cagentDb = db.getSiblingDB("cagent");
 const collections = [
-    "model", "tool", "session", "message",
-    "adk_session", "adk_session_event", "adk_app_state", "adk_user_state"
+    "cagent_model", "cagent_tool", "cagent_session", "cagent_message",
+    "cagent_adk_session", "cagent_adk_event", "cagent_adk_app_state", "cagent_adk_user_state"
 ];
 const existingCollections = new Set(cagentDb.getCollectionNames());
 for (const name of collections) {
@@ -161,38 +164,38 @@ for (const name of collections) {
 }
 
 // Required for ADK correctness: unique session identities, event IDs, and shared state records.
-cagentDb.adk_session.createIndex(
+cagentDb.cagent_adk_session.createIndex(
     {app_name: 1, user_id: 1, session_id: 1},
     {unique: true, name: "uq_adk_session_identity"}
 );
-cagentDb.adk_session_event.createIndex(
+cagentDb.cagent_adk_event.createIndex(
     {session: 1, event_id: 1},
     {unique: true, name: "uq_adk_session_event_id"}
 );
-cagentDb.adk_session_event.createIndex(
+cagentDb.cagent_adk_event.createIndex(
     {session: 1, timestamp: -1, sequence: -1},
     {name: "ix_adk_session_event_history"}
 );
-cagentDb.adk_app_state.createIndex(
+cagentDb.cagent_adk_app_state.createIndex(
     {app_name: 1},
     {unique: true, name: "uq_adk_app_state"}
 );
-cagentDb.adk_user_state.createIndex(
+cagentDb.cagent_adk_user_state.createIndex(
     {app_name: 1, user_id: 1},
     {unique: true, name: "uq_adk_user_state"}
 );
 
 // Supporting indexes for application queries.
-cagentDb.session.createIndex(
+cagentDb.cagent_session.createIndex(
     {user: 1, _id: -1}, {name: "ix_session_user_id"}
 );
-cagentDb.message.createIndex(
+cagentDb.cagent_message.createIndex(
     {session: 1, _id: -1}, {name: "ix_message_session_id"}
 );
-cagentDb.model.createIndex(
+cagentDb.cagent_model.createIndex(
     {type: 1, enable: 1}, {name: "ix_model_type_enable"}
 );
-cagentDb.tool.createIndex(
+cagentDb.cagent_tool.createIndex(
     {enable: 1}, {name: "ix_tool_enable"}
 );
 

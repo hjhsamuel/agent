@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hjhsamuel/agent/config"
 	"github.com/hjhsamuel/agent/internal/service/adapter"
@@ -23,13 +24,16 @@ type Service struct {
 	rbs        *ringbuffer.RingBufferManager
 	adkSession session.Service
 
-	life sync.Map
-	wg   sync.WaitGroup
+	life        sync.Map
+	wg          sync.WaitGroup
+	lifecycleMu sync.Mutex
+	stopping    atomic.Bool
 }
 
 type sessionLife struct {
 	context.Context
-	cancel context.CancelFunc
+	cancel     context.CancelFunc
+	finishOnce sync.Once
 }
 
 func (s *Service) Start() error {
@@ -57,10 +61,13 @@ func (s *Service) Start() error {
 }
 
 func (s *Service) Close() {
+	s.lifecycleMu.Lock()
+	s.stopping.Store(true)
 	s.life.Range(func(key, value any) bool {
 		value.(*sessionLife).cancel()
 		return true
 	})
+	s.lifecycleMu.Unlock()
 	s.wg.Wait()
 
 	_ = s.rbs.Close()
@@ -83,8 +90,11 @@ func (s *Service) releaseLife(id string, life *sessionLife) {
 
 // finishLife only cleans up the owning turn, even if its successor has started.
 func (s *Service) finishLife(id string, life *sessionLife) {
-	s.releaseLife(id, life)
-	life.cancel()
+	life.finishOnce.Do(func() {
+		s.releaseLife(id, life)
+		life.cancel()
+		s.wg.Done()
+	})
 }
 
 func NewService() (*Service, error) {

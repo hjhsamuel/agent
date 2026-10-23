@@ -107,14 +107,14 @@ func (s *Service) Stream(c *gin.Context, id string, seq uint64) error {
 	}
 }
 
-func (s *Service) ExtractSessionTopic(content string) (string, error) {
+func (s *Service) ExtractSessionTopic(ctx context.Context, content string) (string, error) {
 	_, llmModel, err := s.randomModel(schema.ChatModel)
 	if err != nil {
 		return "", err
 	}
 
 	response := llmModel.GenerateContent(
-		context.Background(),
+		ctx,
 		&model.LLMRequest{
 			Contents: []*genai.Content{
 				{Role: "system", Parts: []*genai.Part{{Text: prompts.SessionTopicSystemPrompt}}},

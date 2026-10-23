@@ -50,58 +50,67 @@ func (d *Store) CreateTempSession(obj *schema.Session) (bson.ObjectID, error) {
 
 func (d *Store) AddMessage(obj *schema.Message) (schema.SessionStatus, int64, error) {
 	var state schema.SessionStatus
-	if obj.Turn == 0 {
-		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
-			context.Background(),
-			bson.M{
-				"_id":   obj.Session,
-				"state": bson.M{"$in": []schema.SessionStatus{schema.SessionDone, schema.SessionTemp}},
-			},
-			bson.M{
-				"$inc": bson.M{"turn_seq": 1, "msg_seq": 1},
-				"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()},
-			},
-			options.FindOneAndUpdate().SetProjection(bson.M{"turn_seq": 1, "msg_seq": 1, "state": 1}),
-		)
-		if err := result.Err(); err != nil {
-			return 0, 0, err
+	// The callback may be retried after a transient transaction failure. Always
+	// start from the caller's original turn rather than a previous attempt.
+	original := *obj
+	var message schema.Message
+	err := d.withSessionTransaction(context.Background(), func(ctx context.Context) error {
+		message = original
+		if original.Turn == 0 {
+			result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
+				ctx,
+				bson.M{
+					"_id":   obj.Session,
+					"state": bson.M{"$in": []schema.SessionStatus{schema.SessionDone, schema.SessionTemp}},
+				},
+				bson.M{
+					"$inc": bson.M{"turn_seq": 1, "msg_seq": 1},
+					"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()},
+				},
+				options.FindOneAndUpdate().SetProjection(bson.M{"turn_seq": 1, "msg_seq": 1, "state": 1}),
+			)
+			if err := result.Err(); err != nil {
+				return err
+			}
+
+			var sessionObj schema.Session
+			if err := result.Decode(&sessionObj); err != nil {
+				return err
+			}
+
+			state = sessionObj.State
+
+			message.Turn = sessionObj.TurnSeq
+			message.Seq = sessionObj.MsgSeq
+		} else {
+			result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
+				ctx,
+				bson.M{"_id": obj.Session},
+				bson.M{"$inc": bson.M{"msg_seq": 1}},
+				options.FindOneAndUpdate().SetProjection(bson.M{"msg_seq": 1, "state": 1}),
+			)
+			if err := result.Err(); err != nil {
+				return err
+			}
+
+			var sessionObj schema.Session
+			if err := result.Decode(&sessionObj); err != nil {
+				return err
+			}
+
+			state = sessionObj.State
+
+			message.Seq = sessionObj.MsgSeq
 		}
 
-		var sessionObj schema.Session
-		if err := result.Decode(&sessionObj); err != nil {
-			return 0, 0, err
-		}
-
-		state = sessionObj.State
-
-		obj.Turn = sessionObj.TurnSeq
-		obj.Seq = sessionObj.MsgSeq
-	} else {
-		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
-			context.Background(),
-			bson.M{"_id": obj.Session},
-			bson.M{"$inc": bson.M{"msg_seq": 1}},
-			options.FindOneAndUpdate().SetProjection(bson.M{"msg_seq": 1, "state": 1}),
-		)
-		if err := result.Err(); err != nil {
-			return 0, 0, err
-		}
-
-		var sessionObj schema.Session
-		if err := result.Decode(&sessionObj); err != nil {
-			return 0, 0, err
-		}
-
-		state = sessionObj.State
-
-		obj.Seq = sessionObj.MsgSeq
-	}
-
-	_, err := d.getCollection(schema.MessageCollection).InsertOne(context.Background(), obj)
+		_, err := d.getCollection(schema.MessageCollection).InsertOne(ctx, &message)
+		return err
+	})
 	if err != nil {
 		return 0, 0, err
 	}
 
+	*obj = message
 	return state, obj.Turn, nil
 }
 
