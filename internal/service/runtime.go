@@ -92,11 +92,6 @@ func (s *Service) Run(user, id string, content string) error {
 		return errors.New("invalid session")
 	}
 
-	ctx, producer, err := s.acquireProducer(sessionId.Hex())
-	if err != nil {
-		return err
-	}
-
 	r, err := s.getRunner(
 		user,
 		&AgentConfig{
@@ -106,7 +101,11 @@ func (s *Service) Run(user, id string, content string) error {
 		},
 	)
 	if err != nil {
-		s.cancel(sessionId.Hex())
+		return err
+	}
+
+	ctx, producer, err := s.acquireProducer(sessionId.Hex())
+	if err != nil {
 		return err
 	}
 
