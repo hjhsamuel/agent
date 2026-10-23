@@ -161,7 +161,7 @@ func adkEventFilter(doc *schema.ADKSession, after time.Time) bson.D {
 
 func (d *Store) GetADKSessionEvents(ctx context.Context, doc *schema.ADKSession, after time.Time, limit int) ([]schema.ADKSessionEvent, error) {
 	opts := options.Find().SetSort(bson.D{{Key: "timestamp", Value: -1}, {Key: "sequence", Value: -1}}).
-		SetProjection(bson.D{{Key: "payload", Value: 1}, {Key: "_id", Value: 0}}).SetBatchSize(128)
+		SetBatchSize(128)
 	if limit > 0 {
 		opts.SetLimit(int64(limit))
 	}
