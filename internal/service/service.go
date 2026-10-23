@@ -27,6 +27,11 @@ type Service struct {
 	wg   sync.WaitGroup
 }
 
+type sessionLife struct {
+	context.Context
+	cancel context.CancelFunc
+}
+
 func (s *Service) Start() error {
 	// TODO
 	// 检查 skills
@@ -53,7 +58,7 @@ func (s *Service) Start() error {
 
 func (s *Service) Close() {
 	s.life.Range(func(key, value any) bool {
-		value.(context.CancelFunc)()
+		value.(*sessionLife).cancel()
 		return true
 	})
 	s.wg.Wait()
@@ -61,8 +66,8 @@ func (s *Service) Close() {
 	_ = s.rbs.Close()
 }
 
-func (s *Service) setLife(id string, cancel context.CancelFunc) bool {
-	_, loaded := s.life.LoadOrStore(id, cancel)
+func (s *Service) setLife(id string, life *sessionLife) bool {
+	_, loaded := s.life.LoadOrStore(id, life)
 	return loaded
 }
 
@@ -71,13 +76,15 @@ func (s *Service) lifeExists(id string) bool {
 	return ok
 }
 
-func (s *Service) cancel(id string) {
-	v, loaded := s.life.LoadAndDelete(id)
-	if !loaded {
-		return
-	}
+// releaseLife permits the next turn without closing this turn's SSE producer.
+func (s *Service) releaseLife(id string, life *sessionLife) {
+	s.life.CompareAndDelete(id, life)
+}
 
-	v.(context.CancelFunc)()
+// finishLife only cleans up the owning turn, even if its successor has started.
+func (s *Service) finishLife(id string, life *sessionLife) {
+	s.releaseLife(id, life)
+	life.cancel()
 }
 
 func NewService() (*Service, error) {

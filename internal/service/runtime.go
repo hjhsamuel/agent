@@ -70,20 +70,21 @@ func (s *Service) getRunner(user string, cfg *AgentConfig) (*runner.Runner, erro
 	})
 }
 
-func (s *Service) acquireProducer(id string) (context.Context, *ringbuffer.RingBufferProducer, error) {
+func (s *Service) acquireProducer(id string) (*sessionLife, *ringbuffer.RingBufferProducer, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	if s.setLife(id, cancel) {
+	life := &sessionLife{Context: ctx, cancel: cancel}
+	if s.setLife(id, life) {
 		cancel()
 		return nil, nil, errors.New("session already running")
 	}
 
 	producer, err := s.rbs.AcquireProducer(ctx, id)
 	if err != nil {
-		s.cancel(id)
+		s.finishLife(id, life)
 		return nil, nil, err
 	}
 
-	return ctx, producer, nil
+	return life, producer, nil
 }
 
 func (s *Service) Run(user, id string, content string) error {
@@ -119,7 +120,7 @@ func (s *Service) Run(user, id string, content string) error {
 		CreatedAt: time.Now(),
 	})
 	if err != nil {
-		s.cancel(sessionId.Hex())
+		s.finishLife(sessionId.Hex(), ctx)
 		return err
 	}
 
@@ -131,7 +132,7 @@ func (s *Service) Run(user, id string, content string) error {
 }
 
 func (s *Service) newTurn(
-	ctx context.Context,
+	ctx *sessionLife,
 	producer *ringbuffer.RingBufferProducer,
 	user string,
 	sessionId bson.ObjectID,
@@ -141,6 +142,7 @@ func (s *Service) newTurn(
 	isFirst bool,
 ) {
 	defer s.wg.Done()
+	defer s.finishLife(sessionId.Hex(), ctx)
 
 	if isFirst {
 		if msg != nil && len(msg.Parts) != 0 && msg.Parts[0].Text != "" {
@@ -159,16 +161,6 @@ func (s *Service) newTurn(
 	goto Success
 
 Error:
-	s.cancel(sessionId.Hex())
-
-	_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
-		Type: ringbuffer.SSEChunkTypeError,
-		Data: err.Error(),
-	})
-	_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
-		Type: ringbuffer.SSEChunkTypeEnd,
-	})
-
 	_, _, _ = s.store.AddMessage(&schema.Message{
 		Session:   sessionId,
 		Turn:      turnId,
@@ -181,17 +173,25 @@ Error:
 		bson.M{"$set": bson.M{"state": schema.SessionDone}},
 	)
 
+	s.releaseLife(sessionId.Hex(), ctx)
+	_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
+		Type: ringbuffer.SSEChunkTypeError,
+		Data: err.Error(),
+	})
+	_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
+		Type: ringbuffer.SSEChunkTypeEnd,
+	})
+
 	return
 
 Success:
-	s.cancel(sessionId.Hex())
-
 	if len(waitInputs) != 0 {
 		_ = s.store.UpdateSession(
 			bson.M{"_id": sessionId, "state": schema.SessionRunning},
 			bson.M{"$set": bson.M{"state": schema.SessionWait, "wait": waitInputs}},
 		)
 
+		s.releaseLife(sessionId.Hex(), ctx)
 		for _, item := range waitInputs {
 			_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
 				Type: ringbuffer.SSEChunkTypeHumanInTheLoop,
@@ -203,6 +203,7 @@ Success:
 			bson.M{"_id": sessionId},
 			bson.M{"$set": bson.M{"state": schema.SessionDone, "wait": []*schema.WaitInput{}}},
 		)
+		s.releaseLife(sessionId.Hex(), ctx)
 	}
 	return
 }
@@ -374,9 +375,9 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 		})
 	}
 
-	ctx, producer, err := s.acquireProducer(id)
+	ctx, producer, err := s.acquireProducer(sessionId.Hex())
 	if err != nil {
-		return nil
+		return err
 	}
 
 	r, err := s.getRunner(
@@ -388,14 +389,14 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 		},
 	)
 	if err != nil {
-		s.cancel(id)
+		s.finishLife(sessionId.Hex(), ctx)
 		return err
 	}
 
 	err = s.store.FinishWaitInput(sessionId, messages...)
 	if err != nil {
-		s.cancel(id)
-		return nil
+		s.finishLife(sessionId.Hex(), ctx)
+		return err
 	}
 
 	msg := &genai.Content{Role: genai.RoleUser, Parts: parts}

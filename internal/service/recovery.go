@@ -46,7 +46,7 @@ func (s *Service) recoverSession(obj *schema.Session) error {
 		bson.M{"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()}},
 	)
 	if err != nil {
-		s.cancel(obj.ID.Hex())
+		s.finishLife(obj.ID.Hex(), ctx)
 		return err
 	}
 
