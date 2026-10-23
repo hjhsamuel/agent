@@ -117,7 +117,7 @@ func (d *Store) FinishWaitInput(sessionId bson.ObjectID, messages ...*schema.Mes
 	_, err = session.WithTransaction(ctx, func(sc context.Context) (any, error) {
 		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
 			sc,
-			bson.M{"_id": sessionId, "state": schema.SessionInputted},
+			bson.M{"_id": sessionId, "state": schema.SessionWait},
 			bson.M{
 				"$set": bson.M{
 					"state":      schema.SessionRunning,

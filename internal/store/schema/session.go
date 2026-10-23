@@ -32,12 +32,11 @@ type WaitInput struct {
 type SessionStatus int
 
 const (
-	SessionTemp     SessionStatus = iota // 默认状态，临时会话
-	SessionRunning                       // 运行中
-	SessionDone                          // 结束运行
-	SessionWait                          // 等待用户输入
-	SessionInputted                      // 已完成输入
-	SessionDeleted                       // 被删除
+	SessionTemp    SessionStatus = iota // 默认状态，临时会话
+	SessionRunning                      // 运行中
+	SessionDone                         // 结束运行
+	SessionWait                         // 等待用户输入
+	SessionDeleted                      // 被删除
 )
 
 const MessageCollection = "cagent_message"

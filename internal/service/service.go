@@ -36,7 +36,7 @@ func (s *Service) Start() error {
 		"state": bson.M{
 			"$in": []schema.SessionStatus{
 				schema.SessionRunning,
-				schema.SessionInputted,
+				schema.SessionWait,
 			},
 		},
 	})
