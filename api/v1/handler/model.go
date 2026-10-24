@@ -94,6 +94,7 @@ func (a *Api) GetModels(c *gin.Context) {
 				Name:     elem.Name,
 				Type:     elem.Type,
 				Enable:   elem.Enable,
+				Level:    elem.Level,
 			}
 			rsp = append(rsp, info)
 		}
@@ -188,6 +189,7 @@ func (a *Api) UpdateModel(c *gin.Context) {
 		Url:          req.Url,
 		ContextLimit: req.ContextLimit,
 		Enable:       req.Enable,
+		Level:        req.Level,
 	}
 	if req.Reasoning != nil && req.Reasoning.Key != "" && req.Reasoning.Value != "" {
 		update.Reasoning = &struct {

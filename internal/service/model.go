@@ -128,6 +128,9 @@ func (s *Service) UpdateModel(id string, req *request.UpdateModelReq) error {
 	if req.Enable != nil {
 		update["enable"] = *req.Enable
 	}
+	if req.Level != nil {
+		update["level"] = *req.Level
+	}
 
 	if len(update) == 0 {
 		return nil

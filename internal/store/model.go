@@ -87,6 +87,7 @@ func (d *Store) GroupModel() ([]*request.GroupModel, error) {
 				{Key: "name", Value: "$name"},
 				{Key: "type", Value: "$type"},
 				{Key: "enable", Value: "$enable"},
+				{Key: "level", Value: "$level"},
 			}}}},
 		}}},
 		bson.D{{Key: "$project", Value: bson.D{

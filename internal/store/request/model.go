@@ -12,6 +12,7 @@ type ModelInfo struct {
 	Name   string
 	Type   string
 	Enable bool
+	Level  int
 }
 
 type UpdateModelReq struct {
@@ -24,6 +25,7 @@ type UpdateModelReq struct {
 		Value string
 	}
 	Enable *bool
+	Level  *int
 }
 
 type UpdateApiKeyReq struct {

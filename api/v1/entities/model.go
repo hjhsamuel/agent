@@ -21,6 +21,7 @@ type GetModelsRsp struct {
 	Name     string `json:"name"`     // 模型
 	Type     string `json:"type"`     // 类型
 	Enable   bool   `json:"enable"`   // 是否可用
+	Level    int    `json:"level"`    // 智能程度
 }
 
 type GetModelInfoReq struct {
@@ -43,6 +44,7 @@ type UpdateModelReq struct {
 	Enable       *bool     `json:"enable"`                 // 是否可用
 	ContextLimit *int64    `json:"context_limit"`          // 上下文限制
 	Reasoning    *KeyValue `json:"reasoning"`              // 深度思考
+	Level        *int      `json:"level"`                  // 智能程度
 }
 
 type AddApiKeyReq struct {
