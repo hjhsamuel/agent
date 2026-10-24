@@ -18,6 +18,7 @@ func (s *Service) AddModel(
 	contextLimit int64,
 	reasonKey string,
 	reasonValue string,
+	level int,
 ) (string, error) {
 	modelObj := &schema.Model{
 		Provider: provider,
@@ -30,6 +31,7 @@ func (s *Service) AddModel(
 			ContextLimit: contextLimit,
 		},
 		Enable: false,
+		Level:  schema.ModelLevel(level),
 	}
 	if reasonKey != "" && reasonValue != "" {
 		modelObj.Options.Reasoning = &schema.KeyPair{

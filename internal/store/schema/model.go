@@ -21,6 +21,7 @@ type Model struct {
 	ApiKeys  []*ApiKey     `bson:"api_keys"`
 	Options  ModelConfig   `bson:"options"`
 	Enable   bool          `bson:"enable"`
+	Level    ModelLevel    `bson:"level"`
 }
 
 type ModelConfig struct {
@@ -37,6 +38,16 @@ type ApiKey struct {
 	Weight     int64  `bson:"weight"`
 	Enable     bool   `bson:"enable"`
 }
+
+type ModelLevel int
+
+const (
+	ModelLevelLow ModelLevel = iota
+	ModelLevelMedium
+	ModelLevelHigh
+	ModelLevelExtraHigh
+	ModelLevelUltra
+)
 
 const (
 	MinApiKeyWeight int64 = 1

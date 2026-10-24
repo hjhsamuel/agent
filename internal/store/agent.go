@@ -31,6 +31,7 @@ func (d *Store) AddAgent(
 				Prompt:      info.Prompt,
 				Type:        schema.AgentTypeMain,
 				Tag:         tags,
+				Level:       schema.AgentLevel(info.Level),
 				CreatedAt:   time.Now(),
 			},
 		)
@@ -44,6 +45,7 @@ func (d *Store) AddAgent(
 				Type:        schema.AgentTypeRunner,
 				Parent:      parent,
 				Tag:         tags,
+				Level:       schema.AgentLevel(info.Level),
 				CreatedAt:   time.Now(),
 			},
 		)
@@ -56,6 +58,7 @@ func (d *Store) AddAgent(
 				Prompt:      info.Prompt,
 				Type:        schema.AgentTypeGroup,
 				Tag:         tags,
+				Level:       schema.AgentLevel(info.Level),
 				CreatedAt:   time.Now(),
 			},
 		)

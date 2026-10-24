@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-func (d *Store) RandomModel(ctx context.Context, kind schema.ModelKind) (*schema.Model, error) {
+func (d *Store) RandomModel(ctx context.Context, kind schema.ModelKind, levels ...schema.ModelLevel) (*schema.Model, error) {
 	filter := bson.D{
 		{Key: "type", Value: kind},
 		{Key: "enable", Value: true},
@@ -24,6 +24,10 @@ func (d *Store) RandomModel(ctx context.Context, kind schema.ModelKind) (*schema
 			},
 		}},
 	}
+	if len(levels) != 0 {
+		filter = append(filter, bson.E{Key: "level", Value: bson.M{"$in": levels}})
+	}
+
 	result := d.getCollection(schema.ModelCollection).FindOne(
 		ctx,
 		filter,

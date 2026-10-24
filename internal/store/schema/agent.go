@@ -21,6 +21,7 @@ type Agent struct {
 	Type        AgentType       `bson:"type"`
 	Parent      *bson.ObjectID  `bson:"parent,omitempty"` // 仅用于 runner 类型
 	Tag         []bson.ObjectID `bson:"tag"`
+	Level       AgentLevel      `bson:"level"` // 智能程度
 	CreatedAt   time.Time       `bson:"created_at"`
 	UpdatedAt   time.Time       `bson:"updated_at"`
 }
@@ -31,4 +32,12 @@ const (
 	AgentTypeMain   AgentType = iota // main agent
 	AgentTypeGroup                   // group
 	AgentTypeRunner                  // runner
+)
+
+type AgentLevel int
+
+const (
+	AgentLevelLow AgentLevel = iota
+	AgentLevelMedium
+	AgentLevelHigh
 )

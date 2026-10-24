@@ -7,6 +7,7 @@ type AddModelReq struct {
 	Type         string    `json:"type"`          // 模型类型。chat：对话模型；embedding：嵌入模型
 	ContextLimit int64     `json:"context_limit"` // 上下文限制
 	Reasoning    *KeyValue `json:"reasoning"`     // 深度思考
+	Level        int       `json:"level"`         // 智能程度。[0, 4]
 }
 
 type KeyValue struct {

@@ -52,7 +52,7 @@ func (a *Api) AddModel(c *gin.Context) {
 	}
 
 	modelId, err := a.srv.AddModel(req.Provider, req.Name, req.Url, req.Type, req.ContextLimit,
-		reasoningKey, reasoningVal)
+		reasoningKey, reasoningVal, req.Level)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
