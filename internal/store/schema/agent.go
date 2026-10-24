@@ -1,34 +1,26 @@
 package schema
 
-import (
-	"time"
-
-	"go.mongodb.org/mongo-driver/v2/bson"
-)
+import "go.mongodb.org/mongo-driver/v2/bson"
 
 const (
 	MainAgentName = "cagent"
 	RunnerName    = "CAGENT"
 )
 
-const AgentGroupCollection = "cagent_agent_group"
-
-type AgentGroup struct {
-	ID          bson.ObjectID `bson:"_id,omitempty"`
-	Name        string        `bson:"name"`
-	Description string        `bson:"description"`
-	Prompt      string        `bson:"prompt"`
-	Agents      []*Agent      `bson:"agents"`
-	CreatedAt   time.Time     `bson:"created_at"`
-	UpdatedAt   time.Time     `bson:"updated_at"`
-}
-
 type Agent struct {
-	ID          string        `bson:"id"`
-	Name        string        `bson:"name"`
-	Description string        `bson:"description"`
-	Prompt      string        `bson:"prompt"`
-	Group       bson.ObjectID `bson:"group"`
-	CreatedAt   time.Time     `bson:"created_at"`
-	UpdatedAt   time.Time     `bson:"updated_at"`
+	ID          bson.M          `bson:"_id,omitempty"`
+	Name        string          `bson:"name"`
+	Description string          `bson:"description"`
+	Prompt      string          `bson:"prompt"`
+	Type        AgentType       `bson:"type"`
+	Parent      *bson.M         `bson:"parent,omitempty"`
+	Tag         []bson.ObjectID `bson:"tag"`
 }
+
+type AgentType int
+
+const (
+	AgentTypeMain   AgentType = iota // main agent
+	AgentTypeGroup                   // group
+	AgentTypeRunner                  // runner
+)

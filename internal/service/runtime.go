@@ -260,20 +260,18 @@ func (s *Service) run(
 			if event.Content == nil {
 				continue
 			}
-			if event.Author == schema.MainAgentName {
-				for _, part := range event.Content.Parts {
-					if part == nil || part.Text == "" {
-						continue
-					}
-
-					chunk := ringbuffer.SSEChunk{Data: part.Text}
-					if part.Thought {
-						chunk.Type = ringbuffer.SSEChunkTypeReasoning
-					} else {
-						chunk.Type = ringbuffer.SSEChunkTypeData
-					}
-					_, _ = s.rbs.Push(producer, chunk)
+			for _, part := range event.Content.Parts {
+				if part == nil || part.Text == "" {
+					continue
 				}
+
+				chunk := ringbuffer.SSEChunk{Data: part.Text}
+				if part.Thought {
+					chunk.Type = ringbuffer.SSEChunkTypeReasoning
+				} else {
+					chunk.Type = ringbuffer.SSEChunkTypeData
+				}
+				_, _ = s.rbs.Push(producer, chunk)
 			}
 			continue
 		}
