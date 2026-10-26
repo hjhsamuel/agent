@@ -27,3 +27,11 @@ func NewA2A(card *a2a.AgentCard) (agent.Agent, error) {
 		},
 	})
 }
+
+func NewA2AFromPath(ctx context.Context, path string) (agent.Agent, error) {
+	card, err := ResolveCard(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	return NewA2A(card)
+}

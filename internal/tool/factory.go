@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/hjhsamuel/agent/internal/tool/a2ax"
 	"github.com/hjhsamuel/agent/internal/tool/local"
@@ -14,6 +15,63 @@ import (
 	"google.golang.org/adk/v2/tool/skilltoolset"
 	"google.golang.org/adk/v2/tool/skilltoolset/skill"
 )
+
+type ToolFactory struct {
+	lock sync.RWMutex
+
+	tags map[string]*Tag
+}
+
+func (f *ToolFactory) getTags(tags ...string) []*Tag {
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
+	out := make([]*Tag, 0)
+	for _, name := range tags {
+		if v, ok := f.tags[name]; ok {
+			out = append(out, v)
+		}
+	}
+
+	return out
+}
+
+func (f *ToolFactory) AddMCP(name, path string, tags ...string) error {
+	transport := mcpx.NewTransport(path)
+
+	items := f.getTags(tags...)
+	for _, item := range items {
+		if err := item.AddMcp(name, transport); err != nil {
+			continue
+		}
+	}
+
+	return nil
+}
+
+func (f *ToolFactory) AddA2A(name, path string, tags ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	client, err := a2ax.NewA2AFromPath(ctx, path)
+	if err != nil {
+		return err
+	}
+
+	items := f.getTags(tags...)
+	for _, item := range items {
+		if err = item.AddA2A(name, client); err != nil {
+			continue
+		}
+	}
+
+	return nil
+}
+
+func (f *ToolFactory) AddTool(name, path string, tags ...string) error {
+	// TODO
+	return nil
+}
 
 type Factory struct {
 	lock sync.RWMutex
