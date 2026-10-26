@@ -88,3 +88,57 @@ func (d *Store) GetAgents(kind schema.AgentType) ([]*schema.Agent, error) {
 
 	return result, nil
 }
+
+func (d *Store) AllAgent() ([]*schema.Agent, error) {
+	ctx := context.Background()
+	cursor, err := d.getCollection(schema.AgentCollection).Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var objs []*schema.Agent
+	if err = cursor.All(ctx, &objs); err != nil {
+		return nil, err
+	}
+
+	return objs, nil
+}
+
+func (d *Store) AllAgentWithTag() ([]*request.AgentInfo, error) {
+	agentObjs, err := d.AllAgent()
+	if err != nil {
+		return nil, err
+	}
+
+	tagObjs, err := d.AllTags()
+	if err != nil {
+		return nil, err
+	}
+	tagMap := make(map[bson.ObjectID]string)
+	for _, item := range tagObjs {
+		tagMap[item.ID] = item.Name
+	}
+
+	out := make([]*request.AgentInfo, 0)
+	for _, item := range agentObjs {
+		tags := make([]string, 0)
+		for _, id := range item.Tag {
+			if name, ok := tagMap[id]; ok {
+				tags = append(tags, name)
+			}
+		}
+		out = append(out, &request.AgentInfo{
+			ID:          item.ID,
+			Name:        item.Name,
+			Description: item.Description,
+			Prompt:      item.Prompt,
+			Type:        int(item.Type),
+			Parent:      item.Parent,
+			Tag:         tags,
+			Level:       int(item.Level),
+		})
+	}
+
+	return out, nil
+}

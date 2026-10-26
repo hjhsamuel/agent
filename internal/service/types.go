@@ -18,6 +18,9 @@ type AgentConfig struct {
 	Description string
 	Prompt      string
 	Tag         []string
+	ModelLevel  []schema.ModelLevel
+
+	SubAgents []agent.Agent
 }
 
 type Tool struct {
@@ -48,4 +51,34 @@ func buildInputRequiredMessage(inputs []*schema.WaitInput) *genai.Content {
 		})
 	}
 	return &genai.Content{Role: "user", Parts: parts}
+}
+
+func reflectModelLevel(level schema.AgentLevel) []schema.ModelLevel {
+	switch level {
+	case schema.AgentLevelLow:
+		return []schema.ModelLevel{
+			schema.ModelLevelLow,
+		}
+	case schema.AgentLevelMedium:
+		return []schema.ModelLevel{
+			schema.ModelLevelMedium,
+			schema.ModelLevelHigh,
+		}
+	case schema.AgentLevelHigh:
+		return []schema.ModelLevel{
+			schema.ModelLevelExtraHigh,
+			schema.ModelLevelUltra,
+		}
+	default:
+		return []schema.ModelLevel{}
+	}
+}
+
+type AgentGroup struct {
+	Name        string
+	Description string
+	Prompt      string
+	Level       schema.AgentLevel
+	Tag         []string
+	Agents      []*AgentGroup
 }

@@ -20,8 +20,139 @@ import (
 	"google.golang.org/genai"
 )
 
+func (s *Service) buildRunner(user string) (*runner.Runner, error) {
+	agentObjs, err := s.store.AllAgentWithTag()
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		mainAgent  = &AgentGroup{}
+		groupAgent = make(map[bson.ObjectID]*AgentGroup)
+	)
+	for _, item := range agentObjs {
+		switch schema.AgentType(item.Type) {
+		case schema.AgentTypeMain:
+			mainAgent.Name = item.Name
+			mainAgent.Description = item.Description
+			mainAgent.Prompt = item.Prompt
+			mainAgent.Level = schema.AgentLevel(item.Level)
+			mainAgent.Tag = item.Tag
+		case schema.AgentTypeGroup:
+			if v, ok := groupAgent[item.ID]; !ok {
+				v = &AgentGroup{
+					Name:        item.Name,
+					Description: item.Description,
+					Prompt:      item.Prompt,
+					Level:       schema.AgentLevel(item.Level),
+					Tag:         item.Tag,
+					Agents:      make([]*AgentGroup, 0),
+				}
+				groupAgent[item.ID] = v
+			} else {
+				v.Name = item.Name
+				v.Description = item.Description
+				v.Prompt = item.Prompt
+				v.Level = schema.AgentLevel(item.Level)
+				v.Tag = item.Tag
+			}
+		case schema.AgentTypeRunner:
+			if item.Parent != nil {
+				info := &AgentGroup{
+					Name:        item.Name,
+					Description: item.Description,
+					Prompt:      item.Prompt,
+					Level:       schema.AgentLevel(item.Level),
+					Tag:         item.Tag,
+				}
+				if v, ok := groupAgent[*item.Parent]; !ok {
+					v = &AgentGroup{
+						Agents: make([]*AgentGroup, 0),
+					}
+					v.Agents = append(v.Agents, info)
+					groupAgent[*item.Parent] = v
+				} else {
+					v.Agents = append(v.Agents, info)
+				}
+			} else {
+				mainAgent.Agents = append(mainAgent.Agents, &AgentGroup{
+					Name:        item.Name,
+					Description: item.Description,
+					Prompt:      item.Prompt,
+					Level:       schema.AgentLevel(item.Level),
+					Tag:         item.Tag,
+				})
+			}
+		default:
+			continue
+		}
+	}
+	if mainAgent.Name == "" {
+		return nil, errors.New("has no main agent")
+	}
+
+	mainSubAgents := make([]agent.Agent, 0)
+	for _, item := range groupAgent {
+		if item.Name == "" {
+			continue
+		}
+
+		subagents := make([]agent.Agent, 0, len(item.Agents))
+		for _, elem := range item.Agents {
+			agt, _, err := s.getAgent(user, &AgentConfig{
+				Name:        elem.Name,
+				Description: elem.Description,
+				Prompt:      elem.Prompt,
+				Tag:         elem.Tag,
+				ModelLevel:  reflectModelLevel(elem.Level),
+			})
+			if err != nil {
+				return nil, err
+			}
+			subagents = append(subagents, agt)
+		}
+
+		agt, _, err := s.getAgent(user, &AgentConfig{
+			Name:        item.Name,
+			Description: item.Description,
+			Prompt:      item.Prompt,
+			Tag:         item.Tag,
+			ModelLevel:  reflectModelLevel(item.Level),
+			SubAgents:   subagents,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		mainSubAgents = append(mainSubAgents, agt)
+	}
+
+	mainAgt, modelConfig, err := s.getAgent(user, &AgentConfig{
+		Name:        mainAgent.Name,
+		Description: mainAgent.Description,
+		Prompt:      mainAgent.Prompt,
+		Tag:         mainAgent.Tag,
+		ModelLevel:  reflectModelLevel(mainAgent.Level),
+		SubAgents:   mainSubAgents,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return runner.New(runner.Config{
+		AppName:           schema.RunnerName,
+		Agent:             mainAgt,
+		SessionService:    s.adkSession,
+		AutoCreateSession: true,
+		Compaction: &compaction.Config{
+			TokenThreshold:     int(float64(modelConfig.ContextLimit) * CompactRatio),
+			EventRetentionSize: 3,
+		},
+	})
+}
+
 func (s *Service) getAgent(user string, cfg *AgentConfig) (agent.Agent, *schema.ModelConfig, error) {
-	m, llmModel, err := s.randomModel(schema.ChatModel)
+	m, llmModel, err := s.randomModel(schema.ChatModel, cfg.ModelLevel...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -31,7 +162,7 @@ func (s *Service) getAgent(user string, cfg *AgentConfig) (agent.Agent, *schema.
 		Name:        cfg.Name,
 		Description: cfg.Description,
 		Instruction: cfg.Prompt,
-		SubAgents:   toolPack.SubAgents,
+		SubAgents:   append(cfg.SubAgents, toolPack.SubAgents...),
 		Tools:       toolPack.Tools,
 		Toolsets:    toolPack.Toolsets,
 		Model:       llmModel,

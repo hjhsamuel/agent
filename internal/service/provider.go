@@ -8,8 +8,8 @@ import (
 	"google.golang.org/adk/v2/model/openaimodel"
 )
 
-func (s *Service) randomModel(kind schema.ModelKind) (*schema.Model, model.LLM, error) {
-	rsp, err := s.store.RandomModel(context.Background(), kind)
+func (s *Service) randomModel(kind schema.ModelKind, levels ...schema.ModelLevel) (*schema.Model, model.LLM, error) {
+	rsp, err := s.store.RandomModel(context.Background(), kind, levels...)
 	if err != nil {
 		return nil, nil, err
 	}
