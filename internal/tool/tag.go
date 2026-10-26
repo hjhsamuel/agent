@@ -11,9 +11,10 @@ import (
 type Tag struct {
 	lock sync.RWMutex
 
-	tools map[string]tool.Tool
-	mcps  map[string]mcp.Transport
-	a2as  map[string]agent.Agent
+	tools  map[string]tool.Tool
+	mcps   map[string]mcp.Transport
+	a2as   map[string]agent.Agent
+	skills map[string]struct{}
 }
 
 func (t *Tag) AddTool(name string, item tool.Tool) error {
@@ -43,17 +44,26 @@ func (t *Tag) AddA2A(name string, item agent.Agent) error {
 	return nil
 }
 
-func (t *Tag) Get() (map[string]tool.Tool, map[string]mcp.Transport, map[string]agent.Agent) {
+func (t *Tag) AddSkill(name string) error {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	t.skills[name] = struct{}{}
+	return nil
+}
+
+func (t *Tag) Get() (map[string]tool.Tool, map[string]mcp.Transport, map[string]agent.Agent, map[string]struct{}) {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
 
-	return t.tools, t.mcps, t.a2as
+	return t.tools, t.mcps, t.a2as, t.skills
 }
 
 func NewTag() *Tag {
 	return &Tag{
-		tools: make(map[string]tool.Tool),
-		mcps:  make(map[string]mcp.Transport),
-		a2as:  make(map[string]agent.Agent),
+		tools:  make(map[string]tool.Tool),
+		mcps:   make(map[string]mcp.Transport),
+		a2as:   make(map[string]agent.Agent),
+		skills: make(map[string]struct{}),
 	}
 }

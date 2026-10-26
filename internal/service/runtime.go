@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -27,20 +26,12 @@ func (s *Service) getAgent(user string, cfg *AgentConfig) (agent.Agent, *schema.
 		return nil, nil, err
 	}
 
-	toolPack := s.tool.All(user)
-
-	var subagents []agent.Agent
-	if len(cfg.SubAgents) != 0 {
-		subagents = append(slices.Clone(toolPack.SubAgents), cfg.SubAgents...)
-	} else {
-		subagents = toolPack.SubAgents
-	}
-
+	toolPack := s.tool.All(user, cfg.Tag...)
 	agt, err := llmagent.New(llmagent.Config{
 		Name:        cfg.Name,
 		Description: cfg.Description,
 		Instruction: cfg.Prompt,
-		SubAgents:   subagents,
+		SubAgents:   toolPack.SubAgents,
 		Tools:       toolPack.Tools,
 		Toolsets:    toolPack.Toolsets,
 		Model:       llmModel,

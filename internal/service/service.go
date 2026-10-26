@@ -128,16 +128,18 @@ func NewService() (*Service, error) {
 	s.adkSession = adapter.NewSessionService(storage)
 
 	// tools
-	tools, err := storage.AllTools()
+	tools, err := storage.AllToolsWithTag()
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range tools {
-		switch item.Type {
+		switch schema.ToolType(item.Type) {
 		case schema.ToolA2A:
-			_ = s.tool.AddA2A(item.Url)
+			_ = s.tool.AddA2A(item.Name, item.Url, item.Tag...)
 		case schema.ToolMcp:
-			_ = s.tool.AddMcp(item.Url)
+			_ = s.tool.AddMCP(item.Name, item.Url, item.Tag...)
+		case schema.ToolSkill:
+			_ = s.tool.AddSkill(item.Name, item.Tag...)
 		default:
 			// TODO
 			// 暂时不下载本地tool

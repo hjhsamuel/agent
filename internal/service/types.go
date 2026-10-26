@@ -17,9 +17,7 @@ type AgentConfig struct {
 	Name        string
 	Description string
 	Prompt      string
-
-	// Optional
-	SubAgents []agent.Agent
+	Tag         []string
 }
 
 type Tool struct {
