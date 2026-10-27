@@ -3,14 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hjhsamuel/agent/internal/store/schema"
-	"github.com/hjhsamuel/agent/pkg/charx"
 	"github.com/hjhsamuel/agent/pkg/filex"
+	"github.com/hjhsamuel/agent/pkg/skillx"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -88,41 +88,53 @@ func (s *Service) asyncToolLoader(obj *schema.Tool) {
 }
 
 func (s *Service) downloadAndExtractTool(kind schema.ToolType, baseUrl string, toolName string) error {
-	name, err := charx.RandomString(6)
-	if err != nil {
-		name = uuid.NewString()
-	}
-
-	if kind == schema.ToolSkill {
-		var (
-			tempDownloadDir = filepath.Join("skills", "downloads", name)
-			tempExtractDir  = filepath.Join("skills", "extracts", name)
-		)
-		defer os.Remove(tempDownloadDir)
-		defer os.Remove(tempExtractDir)
-
-		dp, err := filex.Download(context.Background(), baseUrl, tempDownloadDir)
-		if err != nil {
-			return err
-		}
-
-		err = filex.Extract(context.Background(), dp, tempExtractDir)
-		if err != nil {
-			return err
-		}
-
-		// 检查是否符合skill目录格式
-		entries, err := os.ReadDir(tempExtractDir)
-		if err != nil {
-			return err
-		}
-		if len(entries) != 1 {
-			return os.Rename(tempExtractDir, filepath.Join("skills", toolName))
-		} else {
-			return os.Rename(filepath.Join(tempExtractDir, entries[0].Name()),
-				filepath.Join("skills", toolName))
-		}
-	} else {
+	if kind != schema.ToolSkill {
 		return errors.New("unknown tool kind")
 	}
+	
+	if err := skillx.ValidateName(toolName); err != nil {
+		return err
+	}
+
+	destination := filepath.Join("skills", toolName)
+	if _, err := os.Lstat(destination); err == nil {
+		return fmt.Errorf("skill %q already exists", toolName)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("check skill destination: %w", err)
+	}
+
+	// Keep staging on the same filesystem so installation can use rename.
+	tempDir, err := os.MkdirTemp("skills", ".tool-*")
+	if err != nil {
+		return fmt.Errorf("create temporary skill directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tempDownloadDir := filepath.Join(tempDir, "downloads")
+	tempExtractDir := filepath.Join(tempDir, "extracts")
+	dp, err := filex.Download(context.Background(), baseUrl, tempDownloadDir)
+	if err != nil {
+		return fmt.Errorf("download skill: %w", err)
+	}
+	if err := filex.Extract(context.Background(), dp, tempExtractDir); err != nil {
+		return fmt.Errorf("extract skill: %w", err)
+	}
+
+	entries, err := os.ReadDir(tempExtractDir)
+	if err != nil {
+		return fmt.Errorf("read extracted skill directory: %w", err)
+	}
+	// Accept both a flat archive and an archive with one enclosing directory.
+	skillDir := tempExtractDir
+	if len(entries) == 1 && entries[0].IsDir() {
+		skillDir = filepath.Join(tempExtractDir, entries[0].Name())
+	}
+	if err := skillx.ValidateSkill(skillDir, toolName); err != nil {
+		return fmt.Errorf("validate skill: %w", err)
+	}
+
+	if err := os.Rename(skillDir, destination); err != nil {
+		return fmt.Errorf("install skill %q: %w", toolName, err)
+	}
+	return nil
 }
