@@ -10,29 +10,13 @@ import (
 )
 
 type Skill struct {
-	names map[string]struct{}
+	names   []*skillx.Frontmatter
+	nameMap map[string]struct{}
 }
 
 func (s *Skill) ListFrontmatters(ctx context.Context) ([]*skill.Frontmatter, error) {
-	if s.names != nil {
-		out := make([]*skill.Frontmatter, 0, len(s.names))
-		for name := range s.names {
-			fm, err := s.LoadFrontmatter(ctx, name)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, fm)
-		}
-		return out, nil
-	}
-
-	rsp, err := skillx.ListSkills()
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]*skill.Frontmatter, 0, len(rsp))
-	for _, item := range rsp {
+	out := make([]*skill.Frontmatter, 0, len(s.names))
+	for _, item := range s.names {
 		out = append(out, &skill.Frontmatter{
 			Name:        item.Name,
 			Description: item.Description,
@@ -53,15 +37,16 @@ func (s *Skill) LoadFrontmatter(ctx context.Context, name string) (*skill.Frontm
 	if err := s.checkName(name); err != nil {
 		return nil, err
 	}
-	rsp, _, err := skillx.ReadSkill(name, false)
-	if err != nil {
-		return nil, err
-	}
 
-	return &skill.Frontmatter{
-		Name:        rsp.Name,
-		Description: rsp.Description,
-	}, nil
+	for _, item := range s.names {
+		if name == item.Name {
+			return &skill.Frontmatter{
+				Name:        item.Name,
+				Description: item.Description,
+			}, nil
+		}
+	}
+	return nil, skill.ErrSkillNotFound
 }
 
 func (s *Skill) LoadInstructions(ctx context.Context, name string) (string, error) {
@@ -84,22 +69,27 @@ func (s *Skill) LoadResource(ctx context.Context, name, resourcePath string) (io
 }
 
 func (s *Skill) checkName(name string) error {
-	if s.names != nil {
-		if _, ok := s.names[name]; !ok {
+	if s.nameMap != nil {
+		if _, ok := s.nameMap[name]; !ok {
 			return fmt.Errorf("%w: %q", skill.ErrSkillNotFound, name)
 		}
 	}
 	return nil
 }
 
-// NewSkillSource limits access to names when provided; no names exposes all skills.
 func NewSkillSource(names ...string) skill.Source {
-	s := &Skill{}
-	if len(names) > 0 {
-		s.names = make(map[string]struct{}, len(names))
-		for _, name := range names {
-			s.names[name] = struct{}{}
+	s := &Skill{
+		names:   make([]*skillx.Frontmatter, 0),
+		nameMap: make(map[string]struct{}),
+	}
+
+	for _, name := range names {
+		fm, _, err := skillx.ReadSkill(name, false)
+		if err != nil {
+			continue
 		}
+		s.names = append(s.names, fm)
+		s.nameMap[fm.Name] = struct{}{}
 	}
 	return s
 }

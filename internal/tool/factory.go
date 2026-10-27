@@ -37,6 +37,10 @@ func GetA2A(paths ...string) []agent.Agent {
 
 func GetSkills(names ...string) tool.Toolset {
 	source := skillx.NewSkillSource(names...)
+	if fm, err := source.ListFrontmatters(context.Background()); err != nil || len(fm) == 0 {
+		return nil
+	}
+
 	sts, err := skilltoolset.New(
 		context.Background(),
 		skilltoolset.Config{
