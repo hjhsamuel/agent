@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"google.golang.org/adk/v2/agent"
@@ -48,19 +49,24 @@ func (s *Service) recoveryInput(ctx context.Context, obj *schema.Session) (*gena
 // Business persistence stays outside SessionService.
 func inputStatePlugin(markRunning func() error) (*plugin.Plugin, error) {
 	var mu sync.Mutex
-	marked := false
+	var marked atomic.Bool
 	return plugin.New(plugin.Config{
 		Name: "business_input_state",
 		BeforeAgentCallback: func(ctx agent.Context) (*genai.Content, error) {
+			// Most callbacks arrive after the first agent has committed input.
+			if marked.Load() || ctx.UserContent() == nil {
+				return nil, nil
+			}
 			mu.Lock()
 			defer mu.Unlock()
-			if marked || ctx.UserContent() == nil {
+			// Another callback may have committed while we waited for the lock.
+			if marked.Load() {
 				return nil, nil
 			}
 			if err := markRunning(); err != nil {
 				return nil, err
 			}
-			marked = true
+			marked.Store(true)
 			return nil, nil
 		},
 	})
