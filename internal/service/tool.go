@@ -14,25 +14,29 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-func (s *Service) AddTool(user string, name string, kind int, baseUrl string) (string, error) {
+func (s *Service) AddTool(user string, name string, kind int, baseUrl string, agentId string) (string, error) {
 	obj := &schema.Tool{
 		Name:      name,
 		Url:       baseUrl,
-		State:     schema.ToolStatusOnline,
 		CreatedAt: time.Now(),
 		Creator:   user,
 	}
+	if agentId != "" {
+		id, err := bson.ObjectIDFromHex(agentId)
+		if err != nil {
+			return "", err
+		}
+		obj.Agent = &id
+		obj.State = schema.ToolStatusOnline
+	} else {
+		obj.State = schema.ToolStatusOffline
+	}
+
 	withAsync := false
 	switch schema.ToolType(kind) {
 	case schema.ToolA2A:
-		if err := s.tool.AddA2A(baseUrl); err != nil {
-			return "", err
-		}
 		obj.Type = schema.ToolA2A
 	case schema.ToolMcp:
-		if err := s.tool.AddMcp(baseUrl); err != nil {
-			return "", err
-		}
 		obj.Type = schema.ToolMcp
 	case schema.ToolLocal:
 		obj.Type = schema.ToolLocal
@@ -63,7 +67,7 @@ func (s *Service) asyncToolLoader(obj *schema.Tool) {
 	var state schema.ToolStatus
 	switch obj.Type {
 	case schema.ToolSkill:
-		err := s.downloadAndExtractTool(obj.Type, obj.Url)
+		err := s.downloadAndExtractTool(obj.Type, obj.Url, obj.Name)
 		if err != nil {
 			state = schema.ToolStatusOffline
 		} else {
@@ -83,7 +87,7 @@ func (s *Service) asyncToolLoader(obj *schema.Tool) {
 	)
 }
 
-func (s *Service) downloadAndExtractTool(kind schema.ToolType, baseUrl string) error {
+func (s *Service) downloadAndExtractTool(kind schema.ToolType, baseUrl string, toolName string) error {
 	name, err := charx.RandomString(6)
 	if err != nil {
 		name = uuid.NewString()
@@ -107,16 +111,17 @@ func (s *Service) downloadAndExtractTool(kind schema.ToolType, baseUrl string) e
 			return err
 		}
 
+		// 检查是否符合skill目录格式
 		entries, err := os.ReadDir(tempExtractDir)
 		if err != nil {
 			return err
 		}
 		if len(entries) != 1 {
-			return errors.New("invalid archive format")
+			return os.Rename(tempExtractDir, filepath.Join("skills", toolName))
+		} else {
+			return os.Rename(filepath.Join(tempExtractDir, entries[0].Name()),
+				filepath.Join("skills", toolName))
 		}
-
-		return os.Rename(filepath.Join(tempExtractDir, entries[0].Name()),
-			filepath.Join("skills", entries[0].Name()))
 	} else {
 		return errors.New("unknown tool kind")
 	}

@@ -2,6 +2,7 @@ package a2ax
 
 import (
 	"context"
+	"time"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2aclient/agentcard"
@@ -10,11 +11,15 @@ import (
 	"google.golang.org/adk/v2/session"
 )
 
-func ResolveCard(ctx context.Context, path string) (*a2a.AgentCard, error) {
-	return agentcard.DefaultResolver.Resolve(ctx, path)
-}
+func NewA2A(path string) (agent.Agent, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancel()
 
-func NewA2A(card *a2a.AgentCard) (agent.Agent, error) {
+	card, err := agentcard.DefaultResolver.Resolve(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+
 	return remoteagent.NewA2A(remoteagent.A2AConfig{
 		Name:        card.Name,
 		Description: card.Description,
@@ -26,12 +31,4 @@ func NewA2A(card *a2a.AgentCard) (agent.Agent, error) {
 			},
 		},
 	})
-}
-
-func NewA2AFromPath(ctx context.Context, path string) (agent.Agent, error) {
-	card, err := ResolveCard(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-	return NewA2A(card)
 }

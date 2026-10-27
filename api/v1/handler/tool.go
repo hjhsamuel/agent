@@ -33,7 +33,7 @@ func (a *Api) AddTool(c *gin.Context) {
 
 	auth := common.GetAuth(c)
 
-	id, err := a.srv.AddTool(strconv.Itoa(auth.ID), req.Name, req.Kind, req.Url)
+	id, err := a.srv.AddTool(strconv.Itoa(auth.ID), req.Name, req.Kind, req.Url, req.Agent)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
