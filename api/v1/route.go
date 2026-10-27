@@ -14,4 +14,5 @@ func Route(srv *service.Service, g *gin.RouterGroup) {
 	modelRoute(api, group)
 	secretRoute(api, group)
 	toolRoute(api, group)
+	agentRoute(api, group)
 }
