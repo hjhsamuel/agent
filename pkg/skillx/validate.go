@@ -76,3 +76,14 @@ func ValidateSkill(directory, name string) error {
 	}
 	return nil
 }
+
+func IsSkillExist(name string) bool {
+	_, err := os.Stat(filepath.Join("skills", name))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false
+		}
+		return true
+	}
+	return true
+}

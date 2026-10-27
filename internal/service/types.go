@@ -1,32 +1,25 @@
 package service
 
 import (
+	"context"
+	"sync"
+
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/hjhsamuel/agent/internal/store/schema"
-	"google.golang.org/adk/v2/agent"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"google.golang.org/adk/v2/runner"
 	"google.golang.org/adk/v2/server/adka2a/v2"
 	"google.golang.org/adk/v2/session"
-	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/toolconfirmation"
 	"google.golang.org/genai"
 )
 
 const CompactRatio = 0.6
 
-type AgentConfig struct {
-	Name        string
-	Description string
-	Prompt      string
-	Tag         []string
-	ModelLevel  []schema.ModelLevel
-
-	SubAgents []agent.Agent
-}
-
-type Tool struct {
-	SubAgents []agent.Agent
-	Tools     []tool.Tool
-	Toolsets  []tool.Toolset
+type sessionLife struct {
+	context.Context
+	cancel     context.CancelFunc
+	finishOnce sync.Once
 }
 
 func isA2AInputRequired(event *session.Event) bool {
@@ -75,10 +68,15 @@ func reflectModelLevel(level schema.AgentLevel) []schema.ModelLevel {
 }
 
 type AgentGroup struct {
+	ID          bson.ObjectID
 	Name        string
 	Description string
 	Prompt      string
 	Level       schema.AgentLevel
-	Tag         []string
 	Agents      []*AgentGroup
+}
+
+type Runner struct {
+	Name string
+	*runner.Runner
 }

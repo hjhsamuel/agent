@@ -1,11 +1,11 @@
-package tool
+package toolx
 
 import (
 	"context"
 
-	"github.com/hjhsamuel/agent/internal/tool/a2ax"
-	"github.com/hjhsamuel/agent/internal/tool/mcpx"
-	"github.com/hjhsamuel/agent/internal/tool/skillx"
+	"github.com/hjhsamuel/agent/internal/toolx/a2ax"
+	"github.com/hjhsamuel/agent/internal/toolx/mcpx"
+	"github.com/hjhsamuel/agent/internal/toolx/skillx"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/skilltoolset"

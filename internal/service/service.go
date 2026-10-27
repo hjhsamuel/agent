@@ -1,7 +1,7 @@
 package service
 
 import (
-	"context"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -10,8 +10,8 @@ import (
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store"
 	"github.com/hjhsamuel/agent/internal/store/schema"
-	"github.com/hjhsamuel/agent/internal/tool"
 	"github.com/hjhsamuel/agent/pkg/kms"
+	"github.com/hjhsamuel/agent/pkg/skillx"
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"google.golang.org/adk/v2/session"
@@ -20,7 +20,6 @@ import (
 type Service struct {
 	store      *store.Store
 	kms        *kms.KMS
-	tool       *tool.Factory // 全局可用的工具、subagent、skills
 	rbs        *ringbuffer.RingBufferManager
 	adkSession session.Service
 
@@ -30,16 +29,27 @@ type Service struct {
 	stopping    atomic.Bool
 }
 
-type sessionLife struct {
-	context.Context
-	cancel     context.CancelFunc
-	finishOnce sync.Once
+func (s *Service) initSkill() error {
+	tools, err := s.store.AllTools()
+	if err != nil {
+		return err
+	}
+
+	_ = os.MkdirAll("skills", os.ModePerm)
+
+	for _, item := range tools {
+		if item.Type != schema.ToolSkill {
+			continue
+		}
+		if skillx.IsSkillExist(item.Name) {
+			continue
+		}
+		_ = s.downloadAndExtractTool(item.Type, item.Url, item.Name)
+	}
+	return nil
 }
 
 func (s *Service) Start() error {
-	// TODO
-	// 检查 skills
-
 	// 恢复任务
 	objs, err := s.store.FindSession(bson.M{
 		"state": bson.M{
@@ -100,9 +110,7 @@ func (s *Service) finishLife(id string, life *sessionLife) {
 func NewService() (*Service, error) {
 	c := config.GetConfig()
 
-	s := &Service{
-		tool: tool.NewFactory(),
-	}
+	s := &Service{}
 
 	// kms
 	secrets := kms.NewKMS()
@@ -127,24 +135,8 @@ func NewService() (*Service, error) {
 	// adk session storage
 	s.adkSession = adapter.NewSessionService(storage)
 
-	// tools
-	tools, err := storage.AllToolsWithTag()
-	if err != nil {
+	if err = s.initSkill(); err != nil {
 		return nil, err
-	}
-	for _, item := range tools {
-		switch schema.ToolType(item.Type) {
-		case schema.ToolA2A:
-			_ = s.tool.AddA2A(item.Name, item.Url, item.Tag...)
-		case schema.ToolMcp:
-			_ = s.tool.AddMCP(item.Name, item.Url, item.Tag...)
-		case schema.ToolSkill:
-			_ = s.tool.AddSkill(item.Name, item.Tag...)
-		default:
-			// TODO
-			// 暂时不下载本地tool
-			continue
-		}
 	}
 
 	// ringbuffer

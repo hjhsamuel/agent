@@ -19,6 +19,14 @@ type Session struct {
 	CreatedAt time.Time     `bson:"created_at"`
 	UpdatedAt time.Time     `bson:"updated_at"`
 	Wait      []*WaitInput  `bson:"wait"` // input_required 信息
+	LastModel *SessionModel `bson:"last_model,omitempty"`
+}
+
+// SessionModel records the last runner's selection without storing credentials.
+type SessionModel struct {
+	ModelID  bson.ObjectID `bson:"model_id"`
+	APIKeyID int64         `bson:"api_key_id"`
+	UsedAt   time.Time     `bson:"used_at"`
 }
 
 type WaitInput struct {

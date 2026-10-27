@@ -143,6 +143,13 @@ shutdown sequence when it receives `SIGINT` or `SIGTERM`. Press `Ctrl+C` to stop
 
 ## MongoDB
 
+Each runner selects one chat model using the main agent's level and shares it across all local agents and compaction.
+The user session stores the last model ID, API key ID, and usage time, without credentials. Subsequent turns prefer
+the same model and key within a five-minute sliding window, refreshed when a turn completes or waits for input.
+If the selection expires, is removed or disabled, or no longer matches the main agent's level, a new selection is made.
+Existing sessions without this metadata select a model on their next turn. Normal messages, confirmation inputs,
+and recovered sessions all use this runner construction path.
+
 Execute the following JavaScript in the `mongosh` session opened above. The script skips existing collections. Index
 creation can be repeated when the name and definition match an existing index; existing data must satisfy the unique
 constraints.

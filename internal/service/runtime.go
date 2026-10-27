@@ -5,23 +5,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
-	"github.com/hjhsamuel/agent/internal/service/prompts"
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
+	"github.com/hjhsamuel/agent/internal/toolx"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
+	"google.golang.org/adk/v2/model"
 	"google.golang.org/adk/v2/runner"
 	"google.golang.org/adk/v2/session/compaction"
+	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/toolconfirmation"
 	"google.golang.org/genai"
 )
 
-func (s *Service) buildRunner(user string) (*runner.Runner, error) {
-	agentObjs, err := s.store.AllAgentWithTag()
+func (s *Service) getAgentTree() (*AgentGroup, error) {
+	agentObjs, err := s.store.AllAgent()
 	if err != nil {
 		return nil, err
 	}
@@ -31,39 +34,39 @@ func (s *Service) buildRunner(user string) (*runner.Runner, error) {
 		groupAgent = make(map[bson.ObjectID]*AgentGroup)
 	)
 	for _, item := range agentObjs {
-		switch schema.AgentType(item.Type) {
+		switch item.Type {
 		case schema.AgentTypeMain:
+			mainAgent.ID = item.ID
 			mainAgent.Name = item.Name
 			mainAgent.Description = item.Description
 			mainAgent.Prompt = item.Prompt
-			mainAgent.Level = schema.AgentLevel(item.Level)
-			mainAgent.Tag = item.Tag
+			mainAgent.Level = item.Level
 		case schema.AgentTypeGroup:
 			if v, ok := groupAgent[item.ID]; !ok {
 				v = &AgentGroup{
+					ID:          item.ID,
 					Name:        item.Name,
 					Description: item.Description,
 					Prompt:      item.Prompt,
-					Level:       schema.AgentLevel(item.Level),
-					Tag:         item.Tag,
+					Level:       item.Level,
 					Agents:      make([]*AgentGroup, 0),
 				}
 				groupAgent[item.ID] = v
 			} else {
+				v.ID = item.ID
 				v.Name = item.Name
 				v.Description = item.Description
 				v.Prompt = item.Prompt
-				v.Level = schema.AgentLevel(item.Level)
-				v.Tag = item.Tag
+				v.Level = item.Level
 			}
 		case schema.AgentTypeRunner:
 			if item.Parent != nil {
 				info := &AgentGroup{
+					ID:          item.ID,
 					Name:        item.Name,
 					Description: item.Description,
 					Prompt:      item.Prompt,
-					Level:       schema.AgentLevel(item.Level),
-					Tag:         item.Tag,
+					Level:       item.Level,
 				}
 				if v, ok := groupAgent[*item.Parent]; !ok {
 					v = &AgentGroup{
@@ -76,120 +79,157 @@ func (s *Service) buildRunner(user string) (*runner.Runner, error) {
 				}
 			} else {
 				mainAgent.Agents = append(mainAgent.Agents, &AgentGroup{
+					ID:          item.ID,
 					Name:        item.Name,
 					Description: item.Description,
 					Prompt:      item.Prompt,
-					Level:       schema.AgentLevel(item.Level),
-					Tag:         item.Tag,
+					Level:       item.Level,
 				})
 			}
 		default:
 			continue
 		}
 	}
+
 	if mainAgent.Name == "" {
 		return nil, errors.New("has no main agent")
 	}
 
-	mainSubAgents := make([]agent.Agent, 0)
 	for _, item := range groupAgent {
 		if item.Name == "" {
 			continue
 		}
+		mainAgent.Agents = append(mainAgent.Agents, item)
+	}
 
-		subagents := make([]agent.Agent, 0, len(item.Agents))
-		for _, elem := range item.Agents {
-			agt, _, err := s.getAgent(user, &AgentConfig{
-				Name:        elem.Name,
-				Description: elem.Description,
-				Prompt:      elem.Prompt,
-				Tag:         elem.Tag,
-				ModelLevel:  reflectModelLevel(elem.Level),
-			})
-			if err != nil {
-				return nil, err
-			}
-			subagents = append(subagents, agt)
-		}
+	return mainAgent, nil
+}
 
-		agt, _, err := s.getAgent(user, &AgentConfig{
-			Name:        item.Name,
-			Description: item.Description,
-			Prompt:      item.Prompt,
-			Tag:         item.Tag,
-			ModelLevel:  reflectModelLevel(item.Level),
-			SubAgents:   subagents,
-		})
+func (s *Service) buildAgent(
+	user string,
+	cfg *AgentGroup,
+	agentTool map[bson.ObjectID]map[schema.ToolType][]string,
+	llmModel model.LLM,
+) (agent.Agent, error) {
+	// Stable ordering preserves the prompt prefix across runner rebuilds.
+	sort.Slice(cfg.Agents, func(i, j int) bool { return cfg.Agents[i].Name < cfg.Agents[j].Name })
+	subAgents := make([]agent.Agent, 0, len(cfg.Agents))
+	for _, child := range cfg.Agents {
+		agt, err := s.buildAgent(user, child, agentTool, llmModel)
 		if err != nil {
 			return nil, err
 		}
-
-		mainSubAgents = append(mainSubAgents, agt)
+		subAgents = append(subAgents, agt)
 	}
 
-	mainAgt, modelConfig, err := s.getAgent(user, &AgentConfig{
-		Name:        mainAgent.Name,
-		Description: mainAgent.Description,
-		Prompt:      mainAgent.Prompt,
-		Tag:         mainAgent.Tag,
-		ModelLevel:  reflectModelLevel(mainAgent.Level),
-		SubAgents:   mainSubAgents,
+	var (
+		mcps  = make([]tool.Toolset, 0)
+		a2as  = make([]agent.Agent, 0)
+		skill tool.Toolset
+	)
+	if v, ok := agentTool[cfg.ID]; ok {
+		for kind, paths := range v {
+			switch kind {
+			case schema.ToolMcp:
+				mcps = toolx.GetMcp(user, paths...)
+			case schema.ToolA2A:
+				a2as = toolx.GetA2A(paths...)
+			case schema.ToolSkill:
+				skill = toolx.GetSkills(paths...)
+			default:
+				continue
+			}
+		}
+	}
+
+	return llmagent.New(llmagent.Config{
+		Name:        cfg.Name,
+		Description: cfg.Description,
+		Instruction: cfg.Prompt,
+		SubAgents:   append(subAgents, a2as...),
+		Toolsets:    append(mcps, skill),
+		Model:       llmModel,
 	})
+}
+
+func (s *Service) buildRunner(obj *schema.Session) (*Runner, error) {
+	agt, err := s.getAgentTree()
 	if err != nil {
 		return nil, err
 	}
 
-	return runner.New(runner.Config{
+	// Select once for the entire tree, including the compaction summarizer.
+	m, err := s.selectModel(obj.LastModel, schema.ChatModel, reflectModelLevel(agt.Level)...)
+	if err != nil {
+		return nil, err
+	}
+	llmModel, err := s.newModel(m)
+	if err != nil {
+		return nil, err
+	}
+
+	tools, err := s.store.AllTools()
+	if err != nil {
+		return nil, err
+	}
+	agentTool := make(map[bson.ObjectID]map[schema.ToolType][]string)
+	for _, item := range tools {
+		if item.Agent == nil {
+			continue
+		}
+		if _, ok := agentTool[*item.Agent]; !ok {
+			agentTool[*item.Agent] = make(map[schema.ToolType][]string)
+		}
+		if _, ok := agentTool[*item.Agent][item.Type]; !ok {
+			agentTool[*item.Agent][item.Type] = make([]string, 0)
+		}
+
+		var path string
+		switch item.Type {
+		case schema.ToolMcp, schema.ToolA2A:
+			path = item.Url
+		case schema.ToolSkill:
+			path = item.Name
+		default:
+			continue
+		}
+		agentTool[*item.Agent][item.Type] = append(agentTool[*item.Agent][item.Type], path)
+	}
+
+	mainAgt, err := s.buildAgent(obj.User, agt, agentTool, llmModel)
+	if err != nil {
+		return nil, err
+	}
+	r, err := runner.New(runner.Config{
 		AppName:           schema.RunnerName,
 		Agent:             mainAgt,
 		SessionService:    s.adkSession,
 		AutoCreateSession: true,
 		Compaction: &compaction.Config{
-			TokenThreshold:     int(float64(modelConfig.ContextLimit) * CompactRatio),
+			TokenThreshold:     int(float64(m.Options.ContextLimit) * CompactRatio),
 			EventRetentionSize: 3,
 		},
 	})
-}
-
-func (s *Service) getAgent(user string, cfg *AgentConfig) (agent.Agent, *schema.ModelConfig, error) {
-	m, llmModel, err := s.randomModel(schema.ChatModel, cfg.ModelLevel...)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	toolPack := s.tool.All(user, cfg.Tag...)
-	agt, err := llmagent.New(llmagent.Config{
-		Name:        cfg.Name,
-		Description: cfg.Description,
-		Instruction: cfg.Prompt,
-		SubAgents:   append(cfg.SubAgents, toolPack.SubAgents...),
-		Tools:       toolPack.Tools,
-		Toolsets:    toolPack.Toolsets,
-		Model:       llmModel,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return agt, &m.Options, nil
-}
-
-func (s *Service) getRunner(user string, cfg *AgentConfig) (*runner.Runner, error) {
-	agt, opts, err := s.getAgent(user, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return runner.New(runner.Config{
-		AppName:           schema.RunnerName,
-		Agent:             agt,
-		SessionService:    s.adkSession,
-		AutoCreateSession: true,
-		Compaction: &compaction.Config{
-			TokenThreshold:     int(float64(opts.ContextLimit) * CompactRatio),
-			EventRetentionSize: 3,
-		},
-	})
+	selection := &schema.SessionModel{
+		ModelID:  m.ID,
+		APIKeyID: m.ApiKeys[0].ID,
+		UsedAt:   time.Now(),
+	}
+	if err := s.store.UpdateSession(
+		bson.M{"_id": obj.ID},
+		bson.M{"$set": bson.M{"last_model": selection}},
+	); err != nil {
+		return nil, err
+	}
+	obj.LastModel = selection
+	return &Runner{
+		Runner: r,
+		Name:   agt.Name,
+	}, nil
 }
 
 func (s *Service) acquireProducer(id string) (*sessionLife, *ringbuffer.RingBufferProducer, error) {
@@ -224,28 +264,29 @@ func (s *Service) Run(user, id string, content string) error {
 		return errors.New("invalid session")
 	}
 
-	r, err := s.getRunner(
-		user,
-		&AgentConfig{
-			Name:        schema.MainAgentName,
-			Description: "main agent",
-			Prompt:      prompts.SystemPrompt,
-		},
-	)
+	ctx, producer, err := s.acquireProducer(sessionId.Hex())
 	if err != nil {
 		return err
 	}
 
-	ctx, producer, err := s.acquireProducer(sessionId.Hex())
+	obj, err := s.GetSession(user, id)
 	if err != nil {
+		s.finishLife(sessionId.Hex(), ctx)
+		return err
+	}
+	if obj == nil || (obj.State != schema.SessionTemp && obj.State != schema.SessionDone) {
+		s.finishLife(sessionId.Hex(), ctx)
+		return errors.New("session is not available for a new turn")
+	}
+	r, err := s.buildRunner(obj)
+	if err != nil {
+		s.finishLife(sessionId.Hex(), ctx)
 		return err
 	}
 
 	// 多轮对话、首次对话
 	state, turnId, err := s.store.AddMessage(&schema.Message{
 		Session:   sessionId,
-		Turn:      0,
-		Seq:       0,
 		Role:      schema.RoleUser,
 		Content:   content,
 		CreatedAt: time.Now(),
@@ -267,7 +308,7 @@ func (s *Service) newTurn(
 	user string,
 	sessionId bson.ObjectID,
 	turnId int64,
-	r *runner.Runner,
+	r *Runner,
 	msg *genai.Content,
 	isFirst bool,
 ) {
@@ -329,7 +370,11 @@ Success:
 	if len(waitInputs) != 0 {
 		err = s.store.UpdateSession(
 			bson.M{"_id": sessionId, "state": schema.SessionRunning},
-			bson.M{"$set": bson.M{"state": schema.SessionWait, "wait": waitInputs}},
+			bson.M{"$set": bson.M{
+				"state":              schema.SessionWait,
+				"wait":               waitInputs,
+				"last_model.used_at": time.Now(),
+			}},
 		)
 		if err != nil {
 			goto Error
@@ -345,7 +390,11 @@ Success:
 	} else {
 		err = s.store.UpdateSession(
 			bson.M{"_id": sessionId},
-			bson.M{"$set": bson.M{"state": schema.SessionDone, "wait": []*schema.WaitInput{}}},
+			bson.M{"$set": bson.M{
+				"state":              schema.SessionDone,
+				"wait":               []*schema.WaitInput{},
+				"last_model.used_at": time.Now(),
+			}},
 		)
 		if err != nil {
 			goto Error
@@ -361,7 +410,7 @@ func (s *Service) run(
 	user string,
 	sessionId bson.ObjectID,
 	turnId int64,
-	r *runner.Runner,
+	r *Runner,
 	producer *ringbuffer.RingBufferProducer,
 	msg *genai.Content,
 ) ([]*schema.WaitInput, error) {
@@ -409,7 +458,7 @@ func (s *Service) run(
 			}
 
 			// 只将来自主 agent 的模型信息进行保存
-			if !part.Thought && event.Content.Role == "model" && part.Text != "" && event.Author == schema.MainAgentName {
+			if !part.Thought && event.Content.Role == "model" && part.Text != "" && event.Author == r.Name {
 				content.WriteString(part.Text)
 			}
 
@@ -528,14 +577,7 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 		return err
 	}
 
-	r, err := s.getRunner(
-		user,
-		&AgentConfig{
-			Name:        schema.MainAgentName,
-			Description: "main agent",
-			Prompt:      prompts.SystemPrompt,
-		},
-	)
+	r, err := s.buildRunner(obj)
 	if err != nil {
 		s.finishLife(sessionId.Hex(), ctx)
 		return err

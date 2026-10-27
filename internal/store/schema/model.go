@@ -1,6 +1,10 @@
 package schema
 
-import "go.mongodb.org/mongo-driver/v2/bson"
+import (
+	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+)
 
 const ModelCollection = "cagent_model"
 
@@ -10,6 +14,8 @@ const (
 	ChatModel      ModelKind = "chat"
 	EmbeddingModel ModelKind = "embedding"
 )
+
+const ModelCacheTTL = time.Minute * 5
 
 type Model struct {
 	ID       bson.ObjectID `bson:"_id,omitempty"`
