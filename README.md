@@ -150,6 +150,17 @@ If the selection expires, is removed or disabled, or no longer matches the main 
 Existing sessions without this metadata select a model on their next turn. Normal messages, confirmation inputs,
 and recovered sessions all use this runner construction path.
 
+Submitted confirmations stay in the session's `WaitInput` records, including while the
+session is running. Business services clear or replace `wait` when a turn finishes or
+requests new input. Recovery checks standard ADK function responses before replaying
+confirmations. Normal messages remain in `cagent_message`, with an optional
+`adk_event_cursor` recording the last event before submission so repeated equal text
+can be distinguished. This cursor stays in the business store; inputs are passed to
+the runner as standard content without custom event fields or event ID rewriting.
+SessionService only manages ADK data and never updates business sessions. Unanswered
+confirmations remain waiting. No index migration is needed. This protects input delivery,
+not exactly-once execution of remote tool effects interrupted by a process crash.
+
 Execute the following JavaScript in the `mongosh` session opened above. The script skips existing collections. Index
 creation can be repeated when the name and definition match an existing index; existing data must satisfy the unique
 constraints.

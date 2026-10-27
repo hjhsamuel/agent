@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -288,12 +287,24 @@ func (s *Service) Run(user, id string, content string) error {
 	}
 
 	// 多轮对话、首次对话
-	state, turnId, err := s.store.AddMessage(&schema.Message{
-		Session:   sessionId,
-		Role:      schema.RoleUser,
-		Content:   content,
-		CreatedAt: time.Now(),
-	})
+	history, err := s.sessionHistory(ctx, user, id)
+	if err != nil {
+		s.finishLife(sessionId.Hex(), ctx)
+		return err
+	}
+	cursor, err := inputHistoryCursor(history)
+	if err != nil {
+		s.finishLife(sessionId.Hex(), ctx)
+		return err
+	}
+	message := &schema.Message{
+		Session:        sessionId,
+		Role:           schema.RoleUser,
+		Content:        content,
+		CreatedAt:      time.Now(),
+		ADKEventCursor: &cursor,
+	}
+	state, turnId, err := s.store.AddMessage(message)
 	if err != nil {
 		s.finishLife(sessionId.Hex(), ctx)
 		return err
@@ -355,7 +366,7 @@ Error:
 	})
 	_ = s.store.UpdateSession(
 		bson.M{"_id": sessionId, "state": schema.SessionRunning},
-		bson.M{"$set": bson.M{"state": schema.SessionDone}},
+		bson.M{"$set": bson.M{"state": schema.SessionDone, "wait": []*schema.WaitInput{}}},
 	)
 
 	s.releaseLife(sessionId.Hex(), ctx)
@@ -510,6 +521,7 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 		return err
 	}
 
+	submittedAt := time.Now()
 	obj, err := s.store.FindOneAndUpdateSession(
 		bson.M{
 			"_id":   sessionId,
@@ -517,63 +529,23 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 			"state": schema.SessionWait,
 			"wait":  bson.M{"$elemMatch": bson.M{"id": toolCallId, "content": ""}},
 		},
-		bson.M{"$set": bson.M{"wait.$.content": content, "wait.$.updated_at": time.Now()}},
+		bson.M{"$set": bson.M{"wait.$.content": content, "wait.$.updated_at": submittedAt}},
 	)
 	if err != nil {
 		return err
 	}
 
-	turnId := obj.TurnSeq - 1
-
-	// 检查是否补充完毕
-	var (
-		parts    = make([]*genai.Part, 0, len(obj.Wait))
-		messages = make([]*schema.Message, 0)
-	)
+	// FindOneAndUpdate returns the pre-update document.
 	for _, item := range obj.Wait {
-		if item.ID == toolCallId {
-			parts = append(parts, &genai.Part{
-				FunctionResponse: &genai.FunctionResponse{
-					ID:   item.ID,
-					Name: toolconfirmation.FunctionCallName,
-					Response: map[string]any{
-						"confirmed": true,
-						"payload":   content,
-					},
-				},
-			})
-			messages = append(messages, &schema.Message{
-				Session:   sessionId,
-				Turn:      turnId,
-				Role:      schema.RoleUser,
-				Content:   fmt.Sprintf("> %s \n\n%s", item.Hint, content),
-				CreatedAt: item.UpdatedAt,
-			})
-			continue
+		if item != nil && item.ID == toolCallId {
+			item.Content = content
+			item.UpdatedAt = submittedAt
 		}
-
-		if item.Content == "" {
-			return nil
-		}
-
-		parts = append(parts, &genai.Part{
-			FunctionResponse: &genai.FunctionResponse{
-				ID:   item.ID,
-				Name: toolconfirmation.FunctionCallName,
-				Response: map[string]any{
-					"confirmed": true,
-					"payload":   item.Content,
-				},
-			},
-		})
-		messages = append(messages, &schema.Message{
-			Session:   sessionId,
-			Turn:      turnId,
-			Role:      schema.RoleUser,
-			Content:   fmt.Sprintf("> %s \n\n%s", item.Hint, item.Content),
-			CreatedAt: item.UpdatedAt,
-		})
 	}
+	if !waitInputsReady(obj.Wait) {
+		return nil
+	}
+	messages := confirmationMessages(obj)
 
 	ctx, producer, err := s.acquireProducer(sessionId.Hex())
 	if err != nil {
@@ -592,8 +564,7 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 		return err
 	}
 
-	msg := &genai.Content{Role: genai.RoleUser, Parts: parts}
-	go s.newTurn(ctx, producer, user, sessionId, turnId, r, msg, false)
+	go s.newTurn(ctx, producer, user, sessionId, obj.TurnSeq-1, r, buildInputRequiredMessage(obj.Wait), false)
 
 	return nil
 }

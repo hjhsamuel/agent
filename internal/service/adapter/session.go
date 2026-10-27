@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/hjhsamuel/agent/internal/store"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 	"google.golang.org/adk/v2/platform"
 	"google.golang.org/adk/v2/session"
 )
@@ -66,6 +68,9 @@ func (s *localSession) create(ctx context.Context, db *store.Store, req *session
 
 func (s *localSession) load(ctx context.Context, db *store.Store, req *session.GetRequest) error {
 	doc, err := db.GetADKSession(ctx, req.AppName, req.UserID, req.SessionID)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return fmt.Errorf("%w: %q: %w", session.ErrNotFound, req.SessionID, err)
+	}
 	if err != nil {
 		return fmt.Errorf("get session: %w", err)
 	}

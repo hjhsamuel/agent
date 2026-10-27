@@ -64,7 +64,9 @@ func (s *Service) Start() error {
 	}
 
 	for _, item := range objs {
-		_ = s.recoverSession(item)
+		if err := s.recoverSession(item); err != nil {
+			logrus.WithError(err).WithField("session", item.ID.Hex()).Error("recover session")
+		}
 	}
 
 	return nil

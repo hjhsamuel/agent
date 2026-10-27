@@ -2,15 +2,16 @@ package filex
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -39,24 +40,33 @@ func Download(ctx context.Context, baseUrl, dst string) (string, error) {
 		return "", errors.New("unknown filename")
 	}
 
-	_ = os.MkdirAll(dst, os.ModePerm)
-
-	// 创建临时文件
-	tmpFile, err := os.CreateTemp(dst, ".download-*")
+	if err := os.MkdirAll(dst, os.ModePerm); err != nil {
+		return "", err
+	}
+	root, err := os.OpenRoot(dst)
 	if err != nil {
 		return "", err
 	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
+	defer root.Close()
+
+	// 创建临时文件
+	tmpName := ".download-" + rand.Text()
+	tmpFile, err := root.OpenFile(tmpName, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return "", err
+	}
+	defer root.Remove(tmpName)
 
 	if _, err = io.Copy(tmpFile, response.Body); err != nil {
 		tmpFile.Close()
 		return "", err
 	}
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		return "", err
+	}
 
 	dstPath := filepath.Join(dst, name)
-	err = os.Rename(tmpPath, dstPath)
+	err = root.Rename(tmpName, name)
 	if err != nil {
 		return "", err
 	}
@@ -70,18 +80,28 @@ func GetFileName(response *http.Response) string {
 		_, params, err := mime.ParseMediaType(disposition)
 		if err == nil {
 			if filename, ok := params["filename"]; ok && filename != "" {
-				return path.Base(filename)
+				return safeFileName(filename)
 			}
 		}
 	}
 
-	u := response.Request.URL
-	if name := path.Base(u.Path); name != "." && name != "/" {
-		if decode, err := url.PathUnescape(name); err == nil {
-			return decode
-		}
-		return name
+	if response.Request == nil || response.Request.URL == nil {
+		return ""
 	}
+	// URL.Path is already unescaped by net/url. A second unescape could turn
+	// a literal filename containing %2f or %5c back into a directory separator.
+	return safeFileName(path.Base(response.Request.URL.Path))
+}
 
-	return ""
+func safeFileName(name string) string {
+	if name == "" || name == "." || name == ".." || !filepath.IsLocal(name) ||
+		strings.ContainsAny(name, `/\:<>"|?*`) || strings.TrimSpace(name) != name || strings.HasSuffix(name, ".") {
+		return ""
+	}
+	for _, ch := range name {
+		if ch < 32 || ch == 127 {
+			return ""
+		}
+	}
+	return name
 }

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/hjhsamuel/agent/internal/store/schema"
@@ -53,6 +54,9 @@ func (d *Store) AddMessage(obj *schema.Message) (schema.SessionStatus, int64, er
 	// The callback may be retried after a transient transaction failure. Always
 	// start from the caller's original turn rather than a previous attempt.
 	original := *obj
+	if original.ID.IsZero() {
+		original.ID = bson.NewObjectID()
+	}
 	var message schema.Message
 	err := d.withSessionTransaction(context.Background(), func(ctx context.Context) error {
 		message = original
@@ -65,7 +69,9 @@ func (d *Store) AddMessage(obj *schema.Message) (schema.SessionStatus, int64, er
 				},
 				bson.M{
 					"$inc": bson.M{"turn_seq": 1, "msg_seq": 1},
-					"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()},
+					"$set": bson.M{
+						"state": schema.SessionRunning, "updated_at": time.Now(),
+					},
 				},
 				options.FindOneAndUpdate().SetProjection(bson.M{"turn_seq": 1, "msg_seq": 1, "state": 1}),
 			)
@@ -115,6 +121,9 @@ func (d *Store) AddMessage(obj *schema.Message) (schema.SessionStatus, int64, er
 }
 
 func (d *Store) FinishWaitInput(sessionId bson.ObjectID, messages ...*schema.Message) error {
+	if len(messages) == 0 {
+		return errors.New("missing confirmation messages")
+	}
 	ctx := context.Background()
 
 	session, err := d.StartSession()
@@ -130,7 +139,6 @@ func (d *Store) FinishWaitInput(sessionId bson.ObjectID, messages ...*schema.Mes
 			bson.M{
 				"$set": bson.M{
 					"state":      schema.SessionRunning,
-					"wait":       []*schema.WaitInput{},
 					"updated_at": time.Now(),
 				},
 				"$inc": bson.M{"msg_seq": len(messages)},
@@ -209,4 +217,18 @@ func (d *Store) GetMessages(
 	}
 
 	return objs, nil
+}
+
+func (d *Store) GetTurnUserMessage(sessionID bson.ObjectID, turn int64) (*schema.Message, error) {
+	messages, err := d.GetMessages(
+		bson.M{"session": sessionID, "turn": turn, "role": schema.RoleUser},
+		options.Find().SetSort(bson.M{"seq": 1}).SetLimit(1),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(messages) == 0 {
+		return nil, errors.New("missing user message for running session")
+	}
+	return messages[0], nil
 }
