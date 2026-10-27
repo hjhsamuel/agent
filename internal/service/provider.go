@@ -30,7 +30,7 @@ func (s *Service) selectModel(
 		}
 		if err == nil {
 			for _, item := range m.ApiKeys {
-				if item.ID == last.APIKeyID {
+				if item.ID == last.APIKeyID && item.Enable {
 					return &schema.Model{
 						ID:       m.ID,
 						Provider: m.Provider,

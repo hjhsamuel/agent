@@ -141,13 +141,16 @@ func (s *Service) buildAgent(
 			}
 		}
 	}
+	if skill != nil {
+		mcps = append(mcps, skill)
+	}
 
 	return llmagent.New(llmagent.Config{
 		Name:        cfg.Name,
 		Description: cfg.Description,
 		Instruction: cfg.Prompt,
 		SubAgents:   append(subAgents, a2as...),
-		Toolsets:    append(mcps, skill),
+		Toolsets:    mcps,
 		Model:       llmModel,
 	})
 }
