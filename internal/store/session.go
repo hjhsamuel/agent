@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hjhsamuel/agent/internal/store/schema"
@@ -70,7 +72,7 @@ func (d *Store) AddMessage(obj *schema.Message) (schema.SessionStatus, int64, er
 				bson.M{
 					"$inc": bson.M{"turn_seq": 1, "msg_seq": 1},
 					"$set": bson.M{
-						"state": schema.SessionRunning, "updated_at": time.Now(),
+						"state": schema.SessionInputReady, "updated_at": time.Now(),
 					},
 				},
 				options.FindOneAndUpdate().SetProjection(bson.M{"turn_seq": 1, "msg_seq": 1, "state": 1}),
@@ -120,47 +122,92 @@ func (d *Store) AddMessage(obj *schema.Message) (schema.SessionStatus, int64, er
 	return state, obj.Turn, nil
 }
 
-func (d *Store) FinishWaitInput(sessionId bson.ObjectID, messages ...*schema.Message) error {
+// SubmitWaitInput atomically stores an answer and makes the complete input ready.
+func (d *Store) SubmitWaitInput(user string, id bson.ObjectID, callID, content string) (*schema.Session, error) {
+	if strings.TrimSpace(content) == "" {
+		return nil, errors.New("input is empty")
+	}
+
+	var obj schema.Session
+	err := d.withSessionTransaction(context.Background(), func(ctx context.Context) error {
+		now := time.Now()
+		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
+			ctx,
+			bson.M{
+				"_id":   id,
+				"user":  user,
+				"state": schema.SessionWait,
+				"wait":  bson.M{"$elemMatch": bson.M{"id": callID, "content": ""}}},
+			bson.M{
+				"$set": bson.M{
+					"wait.$.content":    content,
+					"wait.$.updated_at": now,
+					"updated_at":        now,
+				},
+			},
+			options.FindOneAndUpdate().SetReturnDocument(options.After))
+		if err := result.Decode(&obj); err != nil {
+			return err
+		}
+
+		for _, input := range obj.Wait {
+			if input == nil || input.ID == "" || input.Content == "" {
+				return nil
+			}
+		}
+		if len(obj.Wait) == 0 {
+			return errors.New("missing confirmation inputs")
+		}
+
+		messages := make([]*schema.Message, 0, len(obj.Wait))
+		for _, input := range obj.Wait {
+			messages = append(messages, &schema.Message{
+				Session:   id,
+				Turn:      obj.TurnSeq - 1,
+				Role:      schema.RoleUser,
+				Content:   fmt.Sprintf("> %s \n\n%s", input.Hint, input.Content),
+				CreatedAt: input.UpdatedAt,
+			})
+		}
+		if err := d.finishWaitInput(ctx, id, messages...); err != nil {
+			return err
+		}
+		obj.State = schema.SessionInputReady
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &obj, nil
+}
+
+func (d *Store) finishWaitInput(ctx context.Context, id bson.ObjectID, messages ...*schema.Message) error {
 	if len(messages) == 0 {
 		return errors.New("missing confirmation messages")
 	}
-	ctx := context.Background()
 
-	session, err := d.StartSession()
-	if err != nil {
+	result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
+		ctx,
+		bson.M{
+			"_id":   id,
+			"state": schema.SessionWait,
+		},
+		bson.M{
+			"$set": bson.M{"state": schema.SessionInputReady, "updated_at": time.Now()},
+			"$inc": bson.M{"msg_seq": len(messages)},
+		},
+		options.FindOneAndUpdate().SetProjection(bson.M{"msg_seq": 1}),
+	)
+
+	var obj schema.Session
+	if err := result.Decode(&obj); err != nil {
 		return err
 	}
-	defer session.EndSession(ctx)
-
-	_, err = session.WithTransaction(ctx, func(sc context.Context) (any, error) {
-		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
-			sc,
-			bson.M{"_id": sessionId, "state": schema.SessionWait},
-			bson.M{
-				"$set": bson.M{
-					"state":      schema.SessionRunning,
-					"updated_at": time.Now(),
-				},
-				"$inc": bson.M{"msg_seq": len(messages)},
-			},
-			options.FindOneAndUpdate().SetProjection(bson.M{"msg_seq": 1}),
-		)
-		if err = result.Err(); err != nil {
-			return nil, err
-		}
-
-		var obj schema.Session
-		if err = result.Decode(&obj); err != nil {
-			return nil, err
-		}
-
-		for i := 0; i < len(messages); i++ {
-			messages[i].Seq = obj.MsgSeq + int64(i)
-		}
-
-		_, err = d.getCollection(schema.MessageCollection).InsertMany(sc, messages)
-		return nil, err
-	})
+	for i, message := range messages {
+		message.Seq = obj.MsgSeq + int64(i)
+	}
+	_, err := d.getCollection(schema.MessageCollection).InsertMany(ctx, messages)
 	return err
 }
 

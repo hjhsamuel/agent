@@ -150,16 +150,22 @@ If the selection expires, is removed or disabled, or no longer matches the main 
 Existing sessions without this metadata select a model on their next turn. Normal messages, confirmation inputs,
 and recovered sessions all use this runner construction path.
 
-Submitted confirmations stay in the session's `WaitInput` records, including while the
-session is running. Business services clear or replace `wait` when a turn finishes or
-requests new input. Recovery checks standard ADK function responses before replaying
-confirmations. Normal messages remain in `cagent_message`, with an optional
-`adk_event_cursor` recording the last event before submission so repeated equal text
-can be distinguished. This cursor stays in the business store; inputs are passed to
-the runner as standard content without custom event fields or event ID rewriting.
-SessionService only manages ADK data and never updates business sessions. Unanswered
-confirmations remain waiting. No index migration is needed. This protects input delivery,
-not exactly-once execution of remote tool effects interrupted by a process crash.
+Input delivery is driven by business session state. A new message and its
+`SessionInputReady` state (5) are committed together. Confirmation answers remain
+in `WaitInput`; the final answer, display messages and ready state are committed
+in one transaction. Partial answers leave the session in `SessionWait` (3).
+After the runner persists input, a BeforeAgent hook moves ready to
+`SessionRunning` (1). Recovery submits input only for ready sessions, resumes
+running sessions with nil content, and leaves waiting sessions untouched.
+SessionService manages only ADK data; business recovery never reads its Events.
+The existing numeric states are unchanged; clients should treat state 5 as active.
+Old `adk_event_cursor` fields are ignored. Before upgrading, drain active turns
+and waiting sessions with already-completed answers: old running records do not
+reliably distinguish pending from delivered input, and old fully answered waiting
+records will no longer resume automatically.
+ADK input persistence and the business state update are independent writes. A
+crash between them can replay input; this protocol does not guarantee exactly-once
+input delivery or remote tool execution. No index migration is needed.
 
 Execute the following JavaScript in the `mongosh` session opened above. The script skips existing collections. Index
 creation can be repeated when the name and definition match an existing index; existing data must satisfy the unique

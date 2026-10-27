@@ -15,6 +15,7 @@ import (
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
 	"google.golang.org/adk/v2/model"
+	"google.golang.org/adk/v2/plugin"
 	"google.golang.org/adk/v2/runner"
 	"google.golang.org/adk/v2/session/compaction"
 	"google.golang.org/adk/v2/tool"
@@ -202,11 +203,21 @@ func (s *Service) buildRunner(obj *schema.Session) (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
+	inputState, err := inputStatePlugin(func() error {
+		return s.store.UpdateSession(
+			bson.M{"_id": obj.ID, "state": schema.SessionInputReady},
+			bson.M{"$set": bson.M{"state": schema.SessionRunning, "updated_at": time.Now()}},
+		)
+	})
+	if err != nil {
+		return nil, err
+	}
 	r, err := runner.New(runner.Config{
 		AppName:           schema.RunnerName,
 		Agent:             mainAgt,
 		SessionService:    s.adkSession,
 		AutoCreateSession: true,
+		PluginConfig:      runner.PluginConfig{Plugins: []*plugin.Plugin{inputState}},
 		Compaction: &compaction.Config{
 			TokenThreshold:     int(float64(m.Options.ContextLimit) * CompactRatio),
 			EventRetentionSize: 3,
@@ -287,22 +298,11 @@ func (s *Service) Run(user, id string, content string) error {
 	}
 
 	// 多轮对话、首次对话
-	history, err := s.sessionHistory(ctx, user, id)
-	if err != nil {
-		s.finishLife(sessionId.Hex(), ctx)
-		return err
-	}
-	cursor, err := inputHistoryCursor(history)
-	if err != nil {
-		s.finishLife(sessionId.Hex(), ctx)
-		return err
-	}
 	message := &schema.Message{
-		Session:        sessionId,
-		Role:           schema.RoleUser,
-		Content:        content,
-		CreatedAt:      time.Now(),
-		ADKEventCursor: &cursor,
+		Session:   sessionId,
+		Role:      schema.RoleUser,
+		Content:   content,
+		CreatedAt: time.Now(),
 	}
 	state, turnId, err := s.store.AddMessage(message)
 	if err != nil {
@@ -365,7 +365,7 @@ Error:
 		CreatedAt: time.Now(),
 	})
 	_ = s.store.UpdateSession(
-		bson.M{"_id": sessionId, "state": schema.SessionRunning},
+		bson.M{"_id": sessionId, "state": bson.M{"$in": []schema.SessionStatus{schema.SessionRunning, schema.SessionInputReady}}},
 		bson.M{"$set": bson.M{"state": schema.SessionDone, "wait": []*schema.WaitInput{}}},
 	)
 
@@ -521,31 +521,16 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 		return err
 	}
 
-	submittedAt := time.Now()
-	obj, err := s.store.FindOneAndUpdateSession(
-		bson.M{
-			"_id":   sessionId,
-			"user":  user,
-			"state": schema.SessionWait,
-			"wait":  bson.M{"$elemMatch": bson.M{"id": toolCallId, "content": ""}},
-		},
-		bson.M{"$set": bson.M{"wait.$.content": content, "wait.$.updated_at": submittedAt}},
-	)
+	if strings.TrimSpace(content) == "" {
+		return errors.New("input is empty")
+	}
+	obj, err := s.store.SubmitWaitInput(user, sessionId, toolCallId, content)
 	if err != nil {
 		return err
 	}
-
-	// FindOneAndUpdate returns the pre-update document.
-	for _, item := range obj.Wait {
-		if item != nil && item.ID == toolCallId {
-			item.Content = content
-			item.UpdatedAt = submittedAt
-		}
-	}
-	if !waitInputsReady(obj.Wait) {
+	if obj.State != schema.SessionInputReady {
 		return nil
 	}
-	messages := confirmationMessages(obj)
 
 	ctx, producer, err := s.acquireProducer(sessionId.Hex())
 	if err != nil {
@@ -553,12 +538,6 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 	}
 
 	r, err := s.buildRunner(obj)
-	if err != nil {
-		s.finishLife(sessionId.Hex(), ctx)
-		return err
-	}
-
-	err = s.store.FinishWaitInput(sessionId, messages...)
 	if err != nil {
 		s.finishLife(sessionId.Hex(), ctx)
 		return err

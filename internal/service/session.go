@@ -23,6 +23,7 @@ func (s *Service) GetSessionList(user string, offset string, limit int) ([]*sche
 		"user": user,
 		"state": bson.M{"$in": []schema.SessionStatus{
 			schema.SessionRunning,
+			schema.SessionInputReady,
 			schema.SessionDone,
 			schema.SessionWait,
 		}},

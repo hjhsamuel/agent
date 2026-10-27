@@ -40,11 +40,12 @@ type WaitInput struct {
 type SessionStatus int
 
 const (
-	SessionTemp    SessionStatus = iota // 默认状态，临时会话
-	SessionRunning                      // 运行中
-	SessionDone                         // 结束运行
-	SessionWait                         // 等待用户输入
-	SessionDeleted                      // 被删除
+	SessionTemp       SessionStatus = iota // 默认状态，临时会话
+	SessionRunning                         // 运行中
+	SessionDone                            // 结束运行
+	SessionWait                            // 等待用户输入
+	SessionDeleted                         // 被删除
+	SessionInputReady                      // 输入已持久化，等待 Runner 接收
 )
 
 const MessageCollection = "cagent_message"
@@ -57,8 +58,6 @@ type Message struct {
 	Role      Role          `bson:"role"`
 	Content   string        `bson:"content"`
 	CreatedAt time.Time     `bson:"created_at"`
-	// Business-side recovery cursor; never sent to SessionService or an Event.
-	ADKEventCursor *string `bson:"adk_event_cursor,omitempty"`
 }
 
 type Role string
