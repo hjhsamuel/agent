@@ -6,3 +6,10 @@ type UpdateAgentReq struct {
 	Prompt      *string
 	Level       *int
 }
+
+type GetAgentsReq struct {
+	Offset string
+	Limit  int64
+	Type   int
+	Parent string
+}

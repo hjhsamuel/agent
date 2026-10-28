@@ -11,4 +11,8 @@ func toolRoute(api *handler.Api, g *gin.RouterGroup) {
 	group.Use(middleware.AuthMiddleware)
 
 	group.POST("", api.AddTool)
+	group.POST("/find", api.GetToolList)
+	group.GET("/:id", api.GetToolInfo)
+	group.PUT("/:id/state", api.UpdateToolState)
+	group.PUT("/:id", api.UpdateTool)
 }

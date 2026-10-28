@@ -15,7 +15,7 @@ type Tool struct {
 	Type      ToolType       `bson:"type"`
 	Hash      *HashInfo      `bson:"hash"` // 仅用于本地工具校验
 	State     ToolStatus     `bson:"state"`
-	Agent     *bson.ObjectID `bson:"agent"`
+	Agent     *bson.ObjectID `bson:"agent,omitempty"`
 	CreatedAt time.Time      `bson:"created_at"`
 	Creator   string         `bson:"creator"`
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/hjhsamuel/agent/internal/store/request"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 func (s *Service) AddAgent(obj *schema.Agent) (string, error) {
@@ -58,6 +59,8 @@ func (s *Service) addAgentGroup(obj *schema.Agent) (bson.ObjectID, error) {
 		return bson.ObjectID{}, errors.New("name, description, prompt are required")
 	}
 
+	// TODO
+	// 暂不支持 group 嵌套
 	agents, err := s.store.GetAgents(schema.AgentTypeMain)
 	if err != nil {
 		return bson.ObjectID{}, err
@@ -147,4 +150,34 @@ func (s *Service) DeleteAgent(id string) error {
 		return err
 	}
 	return s.store.DeleteAgent(agentId)
+}
+
+func (s *Service) GetAgents(req *request.GetAgentsReq) ([]*schema.Agent, error) {
+	filter := bson.M{}
+	if req.Offset != "" {
+		id, err := bson.ObjectIDFromHex(req.Offset)
+		if err != nil {
+			return nil, err
+		}
+		filter["_id"] = bson.M{"$gt": id}
+	}
+
+	switch schema.AgentType(req.Type) {
+	case schema.AgentTypeMain:
+		return s.store.GetAgents(schema.AgentTypeMain)
+	case schema.AgentTypeGroup:
+		filter["type"] = schema.AgentTypeGroup
+		return s.store.FindAgents(
+			filter,
+			options.Find().SetSort(bson.M{"_id": 1}).SetLimit(req.Limit),
+		)
+	case schema.AgentTypeSub:
+		filter["type"] = schema.AgentTypeSub
+		return s.store.FindAgents(
+			filter,
+			options.Find().SetSort(bson.M{"_id": 1}).SetLimit(req.Limit),
+		)
+	default:
+		return nil, errors.New("invalid agent type")
+	}
 }

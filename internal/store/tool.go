@@ -6,19 +6,27 @@ import (
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-func (d *Store) AllTools() ([]*schema.Tool, error) {
+func (d *Store) FindTools(
+	filter bson.M,
+	opts ...options.Lister[options.FindOptions],
+) ([]*schema.Tool, error) {
+	ctx := context.Background()
+
 	cursor, err := d.getCollection(schema.ToolCollection).Find(
-		context.Background(),
-		bson.M{"state": schema.ToolStatusOnline},
+		ctx,
+		filter,
+		opts...,
 	)
 	if err != nil {
 		return nil, err
 	}
+	defer cursor.Close(ctx)
 
 	var objs []*schema.Tool
-	if err = cursor.All(context.Background(), &objs); err != nil {
+	if err = cursor.All(ctx, &objs); err != nil {
 		return nil, err
 	}
 
@@ -44,4 +52,22 @@ func (d *Store) UpdateTool(filter, update bson.M) error {
 		return mongo.ErrNoDocuments
 	}
 	return nil
+}
+
+func (d *Store) FindOneAndUpdateTool(
+	filter bson.M,
+	update bson.M,
+	opts ...options.Lister[options.FindOneAndUpdateOptions],
+) (*schema.Tool, error) {
+	result := d.getCollection(schema.ToolCollection).FindOneAndUpdate(context.Background(), filter, update, opts...)
+	if err := result.Err(); err != nil {
+		return nil, err
+	}
+
+	var obj schema.Tool
+	if err := result.Decode(&obj); err != nil {
+		return nil, err
+	}
+
+	return &obj, nil
 }

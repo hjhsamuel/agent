@@ -30,7 +30,7 @@ type Service struct {
 }
 
 func (s *Service) initSkill() error {
-	tools, err := s.store.AllTools()
+	tools, err := s.store.FindTools(bson.M{"state": schema.ToolStatusOnline})
 	if err != nil {
 		return err
 	}

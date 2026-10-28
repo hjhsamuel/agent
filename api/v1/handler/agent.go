@@ -172,3 +172,95 @@ func (a *Api) DeleteAgent(c *gin.Context) {
 		})
 	}
 }
+
+func (a *Api) GetMainAgentInfo(c *gin.Context) {
+	objs, err := a.srv.GetAgents(&request.GetAgentsReq{
+		Type: int(schema.AgentTypeMain),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("get main agent info: %v", err),
+		})
+		return
+	}
+	if len(objs) == 0 {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: "main agent not found",
+		})
+		return
+	}
+
+	agentObj := objs[0]
+	rsp := &entities.AgentInfo{
+		ID:          agentObj.ID.Hex(),
+		Name:        agentObj.Name,
+		Description: agentObj.Description,
+		Prompt:      agentObj.Prompt,
+		Type:        int(agentObj.Type),
+		Level:       int(agentObj.Level),
+		CreatedAt:   agentObj.CreatedAt.Unix(),
+	}
+	c.JSON(http.StatusOK, &common.Response{
+		Code: http.StatusOK,
+		Data: rsp,
+	})
+}
+
+func (a *Api) GetSubAgents(c *gin.Context) {
+	var req entities.GetSubAgentsReq
+	_ = c.ShouldBindUri(&req)
+
+	if req.ID == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id is required",
+		})
+		return
+	}
+	if req.Limit < 0 || req.Limit > 50 {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: limit out of range, expect [0, 50]",
+		})
+		return
+	}
+
+	objs, err := a.srv.GetAgents(&request.GetAgentsReq{
+		Offset: req.Offset,
+		Limit:  req.Limit,
+		Type:   req.Type,
+		Parent: req.ID,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("get sub agents: %v", err),
+		})
+		return
+	}
+
+	rsp := &entities.GetSubAgentsRsp{
+		Offset: req.Offset,
+		Data:   make([]*entities.AgentInfo, 0),
+	}
+	for _, item := range objs {
+		id := item.ID.Hex()
+		rsp.Offset = id
+		rsp.Data = append(rsp.Data, &entities.AgentInfo{
+			ID:          id,
+			Name:        item.Name,
+			Description: item.Description,
+			Prompt:      item.Prompt,
+			Type:        int(item.Type),
+			Level:       int(item.Level),
+			CreatedAt:   item.CreatedAt.Unix(),
+		})
+	}
+
+	c.JSON(http.StatusOK, &common.Response{
+		Code: http.StatusOK,
+		Data: rsp,
+	})
+}

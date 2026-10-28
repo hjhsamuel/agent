@@ -52,10 +52,13 @@ func (d *Store) AllAgent() ([]*schema.Agent, error) {
 	return objs, nil
 }
 
-func (d *Store) FindAgents(filter bson.M) ([]*schema.Agent, error) {
+func (d *Store) FindAgents(
+	filter bson.M,
+	opts ...options.Lister[options.FindOptions],
+) ([]*schema.Agent, error) {
 	ctx := context.Background()
 
-	cursor, err := d.getCollection(schema.AgentCollection).Find(ctx, filter)
+	cursor, err := d.getCollection(schema.AgentCollection).Find(ctx, filter, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +136,10 @@ func (d *Store) DeleteAgent(id bson.ObjectID) error {
 		_, err = d.getCollection(schema.ToolCollection).UpdateMany(
 			sc,
 			bson.M{"agent": id},
-			bson.M{"$unset": bson.M{"agent": ""}},
+			bson.M{
+				"$unset": bson.M{"agent": ""},
+				"$set":   bson.M{"state": schema.ToolStatusOffline},
+			},
 		)
 		return nil, err
 	})

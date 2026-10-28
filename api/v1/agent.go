@@ -15,4 +15,7 @@ func agentRoute(api *handler.Api, g *gin.RouterGroup) {
 	group.POST("/:id/sub", api.AddSubAgent)
 	group.PUT("/:id", api.ModifyAgent)
 	group.DELETE("/:id", api.DeleteAgent)
+
+	group.GET("/main", api.GetMainAgentInfo)
+	group.GET("/:id/sub", api.GetSubAgents)
 }

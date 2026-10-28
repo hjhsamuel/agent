@@ -171,7 +171,7 @@ func (s *Service) buildRunner(obj *schema.Session) (*Runner, error) {
 		return nil, err
 	}
 
-	tools, err := s.store.AllTools()
+	tools, err := s.store.FindTools(bson.M{"state": schema.ToolStatusOnline})
 	if err != nil {
 		return nil, err
 	}

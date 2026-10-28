@@ -9,17 +9,13 @@ import (
 	"github.com/hjhsamuel/agent/app"
 )
 
-const (
-	Version   = ""
-	CommitID  = ""
+var (
+	Version   = "dev"
 	BuildTime = ""
 )
 
 func printVersion() {
-	fmt.Printf(`cagent %s
-CommitID: %s
-BuildTime: %s
-`, Version, CommitID, BuildTime)
+	fmt.Printf(`CAgent %s %s\n`, Version, BuildTime)
 }
 
 func main() {
