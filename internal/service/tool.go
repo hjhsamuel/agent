@@ -100,8 +100,12 @@ func (s *Service) downloadAndExtractTool(kind schema.ToolType, baseUrl string, t
 	}
 
 	destination := filepath.Join("skills", toolName)
-	if _, err := os.Lstat(destination); err == nil {
-		return fmt.Errorf("skill %q already exists", toolName)
+	if info, err := os.Lstat(destination); err == nil {
+		if !info.IsDir() {
+			return fmt.Errorf("skill %q must be a directory", toolName)
+		}
+		// Reuse installed files so re-enabling a skill does not disturb running runners.
+		return skillx.ValidateSkill(destination, toolName)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("check skill destination: %w", err)
 	}

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -30,21 +31,48 @@ type Service struct {
 }
 
 func (s *Service) initSkill() error {
-	tools, err := s.store.FindTools(bson.M{"state": schema.ToolStatusOnline})
+	logrus.Infof("Start sync skills...")
+	tools, err := s.store.FindTools(bson.M{"type": schema.ToolSkill})
 	if err != nil {
 		return err
 	}
 
+	return s.syncSkills(tools)
+}
+
+// syncSkills runs before runners start. Offline skills remain installed too.
+func (s *Service) syncSkills(tools []*schema.Tool) error {
+	wanted := make(map[string]bool, len(tools))
+	for _, item := range tools {
+		if err := skillx.ValidateName(item.Name); err != nil {
+			return fmt.Errorf("sync skill %q: %w", item.Name, err)
+		}
+		wanted[item.Name] = true
+	}
+
 	_ = os.MkdirAll("skills", os.ModePerm)
 
+	// Finish downloads before deleting anything, so a failed download preserves local skills.
 	for _, item := range tools {
-		if item.Type != schema.ToolSkill {
-			continue
-		}
-		if skillx.IsSkillExist(item.Name) {
-			continue
-		}
 		_ = s.downloadAndExtractTool(item.Type, item.Url, item.Name)
+	}
+
+	root, err := os.OpenRoot("skills")
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	entries, err := os.ReadDir("skills")
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if wanted[entry.Name()] || (!entry.IsDir() && entry.Type()&os.ModeSymlink == 0) {
+			continue
+		}
+		// Root confines recursive deletion to skills/, without following external symlinks.
+		_ = root.RemoveAll(entry.Name())
 	}
 	return nil
 }
