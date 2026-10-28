@@ -59,7 +59,7 @@ func (s *Service) getAgentTree() (*AgentGroup, error) {
 				v.Prompt = item.Prompt
 				v.Level = item.Level
 			}
-		case schema.AgentTypeRunner:
+		case schema.AgentTypeSub:
 			if item.Parent != nil {
 				info := &AgentGroup{
 					ID:          item.ID,

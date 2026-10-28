@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/hjhsamuel/agent/internal/store/request"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -18,7 +19,7 @@ func (s *Service) AddAgent(obj *schema.Agent) (string, error) {
 		id, err = s.addMainAgent(obj)
 	case schema.AgentTypeGroup:
 		id, err = s.addAgentGroup(obj)
-	case schema.AgentTypeRunner:
+	case schema.AgentTypeSub:
 		id, err = s.addSubAgent(obj)
 	default:
 		return "", errors.New("unknown agent type")
@@ -93,7 +94,7 @@ func (s *Service) addSubAgent(obj *schema.Agent) (bson.ObjectID, error) {
 	if len(agents) == 0 {
 		return bson.ObjectID{}, errors.New("parent agent not exists")
 	}
-	if agents[0].Type == schema.AgentTypeRunner {
+	if agents[0].Type == schema.AgentTypeSub {
 		// TODO
 		// 暂时仅支持 group 形式，后续支持多层级 subagent
 		return bson.ObjectID{}, errors.New("can only add to main agent or agent group")
@@ -103,11 +104,47 @@ func (s *Service) addSubAgent(obj *schema.Agent) (bson.ObjectID, error) {
 		Name:        obj.Name,
 		Description: obj.Description,
 		Prompt:      obj.Prompt,
-		Type:        schema.AgentTypeRunner,
+		Type:        schema.AgentTypeSub,
 		Parent:      &(agents[0].ID),
 		Level:       obj.Level,
 		CreatedAt:   time.Now(),
 	}
 
 	return s.store.AddAgent(info)
+}
+
+func (s *Service) UpdateAgent(id string, req *request.UpdateAgentReq) error {
+	agentId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+	filter := bson.M{"_id": agentId}
+
+	update := bson.M{}
+	if req.Name != nil {
+		update["name"] = *req.Name
+	}
+	if req.Description != nil {
+		update["description"] = *req.Description
+	}
+	if req.Prompt != nil {
+		update["prompt"] = *req.Prompt
+	}
+	if req.Level != nil {
+		level := schema.AgentLevel(*req.Level)
+		if level < schema.AgentLevelLow || level > schema.AgentLevelHigh {
+			return errors.New("invalid agent level")
+		}
+		update["level"] = level
+	}
+
+	return s.store.UpdateAgent(filter, bson.M{"$set": update})
+}
+
+func (s *Service) DeleteAgent(id string) error {
+	agentId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+	return s.store.DeleteAgent(agentId)
 }

@@ -27,9 +27,9 @@ type Agent struct {
 type AgentType int
 
 const (
-	AgentTypeMain   AgentType = iota // main agent
-	AgentTypeGroup                   // group
-	AgentTypeRunner                  // runner
+	AgentTypeMain  AgentType = iota // main agent
+	AgentTypeGroup                  // group
+	AgentTypeSub                    // sub
 )
 
 type AgentLevel int
