@@ -286,7 +286,7 @@ func (s *Service) UpdateToolInfo(id string, req *request.UpdateToolReq) error {
 		if err != nil {
 			return err
 		}
-		if len(agents) != 0 {
+		if len(agents) == 0 {
 			return mongo.ErrNoDocuments
 		}
 		update["agent"] = &agentId

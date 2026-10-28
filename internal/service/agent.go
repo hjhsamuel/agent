@@ -161,6 +161,13 @@ func (s *Service) GetAgents(req *request.GetAgentsReq) ([]*schema.Agent, error) 
 		}
 		filter["_id"] = bson.M{"$gt": id}
 	}
+	if req.Parent != "" {
+		parentId, err := bson.ObjectIDFromHex(req.Parent)
+		if err != nil {
+			return nil, err
+		}
+		filter["parent"] = &parentId
+	}
 
 	switch schema.AgentType(req.Type) {
 	case schema.AgentTypeMain:

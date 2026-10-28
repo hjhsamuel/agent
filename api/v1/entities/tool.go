@@ -36,7 +36,7 @@ type ToolBase struct {
 }
 
 type GetToolInfoReq struct {
-	ID string `url:"id"` // tool id
+	ID string `uri:"id"` // tool id
 }
 
 type GetToolInfoRsp struct {
@@ -46,12 +46,12 @@ type GetToolInfoRsp struct {
 }
 
 type UpdateToolStateReq struct {
-	ID    string `url:"id"`     // tool id
+	ID    string `uri:"id"`     // tool id
 	State int    `json:"state"` // 状态
 }
 
 type UpdateToolReq struct {
-	ID    string  `url:"id"`     // tool id
+	ID    string  `uri:"id"`     // tool id
 	Name  *string `json:"name"`  // 名称
 	Url   *string `json:"url"`   // 地址
 	Agent *string `json:"agent"` // agent id

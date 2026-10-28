@@ -226,6 +226,13 @@ func (a *Api) GetSubAgents(c *gin.Context) {
 		})
 		return
 	}
+	if req.Type != int(schema.AgentTypeGroup) || req.Type != int(schema.AgentTypeSub) {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: type is invalid",
+		})
+		return
+	}
 
 	objs, err := a.srv.GetAgents(&request.GetAgentsReq{
 		Offset: req.Offset,
