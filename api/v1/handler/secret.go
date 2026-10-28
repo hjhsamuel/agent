@@ -16,7 +16,7 @@ import (
 // @Produce json
 // @Security CookieAuth
 // @Success 200 {object} common.Response{data=entities.GenerateSecretRsp} "生成成功"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "生成或保存密钥失败"
 // @Router /v1/secret [post]
 func (a *Api) GenerateSecret(c *gin.Context) {

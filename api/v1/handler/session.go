@@ -21,7 +21,7 @@ import (
 // @Param limit query int true "最大返回数量，范围为 1 到 50" minimum(1) maximum(50)
 // @Success 200 {object} common.Response{data=entities.GetSessionListRsp} "会话列表"
 // @Failure 400 {object} common.Response "limit 不在允许范围内"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "查询会话失败"
 // @Router /v1/session [get]
 func (a *Api) GetSessionList(c *gin.Context) {
@@ -78,7 +78,7 @@ func (a *Api) GetSessionList(c *gin.Context) {
 // @Param id path string true "会话 ID"
 // @Success 200 {object} common.Response "删除成功"
 // @Failure 400 {object} common.Response "缺少会话 ID"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "删除会话失败"
 // @Router /v1/session/{id} [delete]
 func (a *Api) DeleteSession(c *gin.Context) {
@@ -120,7 +120,8 @@ func (a *Api) DeleteSession(c *gin.Context) {
 // @Param id query string false "会话 ID，不传则创建临时会话"
 // @Param seq query integer false "最后收到的 SSE 事件序号，0 表示首次连接" default(0) minimum(0)
 // @Success 200 {string} string "SSE 事件流"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 400 {object} common.Response "指定会话不存在"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "创建、查询会话或建立事件流失败"
 // @Router /v1/session/stream [get]
 func (a *Api) Stream(c *gin.Context) {
@@ -184,7 +185,7 @@ func (a *Api) Stream(c *gin.Context) {
 // @Param request body entities.ChatReq true "对话消息，content 必填"
 // @Success 200 {object} common.Response "消息已提交"
 // @Failure 400 {object} common.Response "缺少会话 ID 或消息内容"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "提交消息失败"
 // @Router /v1/session/{id}/message [post]
 func (a *Api) Chat(c *gin.Context) {
@@ -227,7 +228,7 @@ func (a *Api) Chat(c *gin.Context) {
 // @Param request body entities.InputRequiredReq true "用户补充内容，call_id 和 content 必填"
 // @Success 200 {object} common.Response "提交成功"
 // @Failure 400 {object} common.Response "缺少会话 ID、任务 ID 或补充内容"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "提交补充内容失败"
 // @Router /v1/session/{id}/input [post]
 func (a *Api) InputRequired(c *gin.Context) {
@@ -264,11 +265,11 @@ func (a *Api) InputRequired(c *gin.Context) {
 // @Produce json
 // @Security CookieAuth
 // @Param id path string true "会话 ID"
-// @Param offset query int false "上一页返回的消息索引，首次查询不传"
-// @Param limit query int false "最大返回数量"
+// @Param offset query int64 false "上一页返回的消息索引，首次查询不传"
+// @Param limit query int true "最大返回轮次数量，必须大于 0" minimum(1)
 // @Success 200 {object} common.Response{data=entities.GetChatMessagesRsp} "历史消息列表"
 // @Failure 400 {object} common.Response "缺少会话 ID 或 limit 小于等于 0"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "查询历史消息失败"
 // @Router /v1/session/{id}/message [get]
 func (a *Api) GetChatMessages(c *gin.Context) {
@@ -321,7 +322,7 @@ func (a *Api) GetChatMessages(c *gin.Context) {
 // @Param id path string true "会话 ID"
 // @Success 200 {object} common.Response{data=[]entities.WaitInputInfo} "待补充输入列表"
 // @Failure 400 {object} common.Response "缺少会话 ID"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "查询会话失败"
 // @Router /v1/session/{id}/input [get]
 func (a *Api) WaitInputList(c *gin.Context) {

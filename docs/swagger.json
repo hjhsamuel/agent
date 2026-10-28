@@ -4,6 +4,460 @@
         "contact": {}
     },
     "paths": {
+        "/v1/agent/group": {
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "创建主 Agent 下的分组；name、description、prompt 必填。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "新增 Agent 分组",
+                "parameters": [
+                    {
+                        "description": "新增 Agent 分组参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/entities.AddAgentGroupReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建成功，data 为 ID",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失或参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "新增 Agent 分组失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/agent/main": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "未找到主 Agent 时返回 500。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "获取主 Agent 信息",
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entities.AgentInfo"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "获取主 Agent 信息失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "名称、描述和提示词为空时使用默认值，智能程度默认为中等。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "新增主 Agent",
+                "parameters": [
+                    {
+                        "description": "新增主 Agent参数",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/entities.AddMainAgentReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建成功，data 为 ID",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "新增主 Agent失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/agent/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "按需更新配置；level 为 0（低）、1（中）或 2（高）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "更新 Agent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Agent ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新 Agent参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/entities.ModifyAgentReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失或参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "更新 Agent失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "删除 Agent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Agent ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失或参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "删除 Agent失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/agent/{id}/sub": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "按 Agent ID 升序分页，使用返回的 offset 查询下一页。当前实现尚未绑定查询参数，且类型校验会始终返回 400。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "获取子 Agent 列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "父级 Agent ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "上一页返回的游标，首次查询不传",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 50,
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "最大返回数量，0 表示不限制",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            1,
+                            2
+                        ],
+                        "type": "integer",
+                        "description": "Agent 类型：1 为分组，2 为子 Agent",
+                        "name": "type",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entities.GetSubAgentsRsp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失或参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "获取子 Agent 列表失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "在主 Agent 或分组下创建子 Agent；name、description、prompt 必填。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent"
+                ],
+                "summary": "新增子 Agent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "父级 Agent ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "新增子 Agent参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/entities.AddSubAgentReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建成功，data 为 ID",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失或参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "新增子 Agent失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/model": {
             "get": {
                 "security": [
@@ -32,7 +486,7 @@
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/schema.GetModelsRsp"
+                                                "$ref": "#/definitions/entities.GetModelsRsp"
                                             }
                                         }
                                     }
@@ -41,7 +495,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -78,7 +532,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/schema.AddModelReq"
+                            "$ref": "#/definitions/entities.AddModelReq"
                         }
                     }
                 ],
@@ -108,7 +562,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -160,7 +614,7 @@
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/schema.ApiKeyInfo"
+                                                "$ref": "#/definitions/entities.ApiKeyInfo"
                                             }
                                         }
                                     }
@@ -175,7 +629,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -219,7 +673,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/schema.UpdateModelReq"
+                            "$ref": "#/definitions/entities.UpdateModelReq"
                         }
                     }
                 ],
@@ -237,7 +691,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -283,7 +737,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/schema.AddApiKeyReq"
+                            "$ref": "#/definitions/entities.AddApiKeyReq"
                         }
                     }
                 ],
@@ -313,7 +767,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -366,7 +820,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/schema.UpdateApiKeyReq"
+                            "$ref": "#/definitions/entities.UpdateApiKeyReq"
                         }
                     }
                 ],
@@ -384,7 +838,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -440,7 +894,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -481,7 +935,7 @@
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/schema.GenerateSecretRsp"
+                                            "$ref": "#/definitions/entities.GenerateSecretRsp"
                                         }
                                     }
                                 }
@@ -489,7 +943,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -547,7 +1001,7 @@
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/schema.GetSessionListRsp"
+                                            "$ref": "#/definitions/entities.GetSessionListRsp"
                                         }
                                     }
                                 }
@@ -561,7 +1015,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -614,8 +1068,14 @@
                             "type": "string"
                         }
                     },
+                    "400": {
+                        "description": "指定会话不存在",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -666,7 +1126,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -718,7 +1178,7 @@
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/schema.WaitInputInfo"
+                                                "$ref": "#/definitions/entities.WaitInputInfo"
                                             }
                                         }
                                     }
@@ -733,7 +1193,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -776,7 +1236,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/schema.InputRequiredReq"
+                            "$ref": "#/definitions/entities.InputRequiredReq"
                         }
                     }
                 ],
@@ -794,7 +1254,7 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -815,7 +1275,7 @@
                         "CookieAuth": []
                     }
                 ],
-                "description": "按消息 ID 倒序返回历史消息，使用响应中的 offset 查询下一页；limit 为 0 或不传时不限制数量。",
+                "description": "按消息 ID 倒序返回历史消息，使用响应中的 offset 查询下一页。",
                 "produces": [
                     "application/json"
                 ],
@@ -832,18 +1292,18 @@
                         "required": true
                     },
                     {
-                        "type": "string",
+                        "type": "integer",
                         "description": "上一页返回的消息索引，首次查询不传",
                         "name": "offset",
                         "in": "query"
                     },
                     {
-                        "minimum": 0,
+                        "minimum": 1,
                         "type": "integer",
-                        "default": 0,
-                        "description": "最大返回数量，0 表示不限制",
+                        "description": "最大返回轮次数量，必须大于 0",
                         "name": "limit",
-                        "in": "query"
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -858,7 +1318,7 @@
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/schema.GetChatMessagesRsp"
+                                            "$ref": "#/definitions/entities.GetChatMessagesRsp"
                                         }
                                     }
                                 }
@@ -866,13 +1326,13 @@
                         }
                     },
                     "400": {
-                        "description": "缺少会话 ID 或 limit 小于 0",
+                        "description": "缺少会话 ID 或 limit 小于等于 0",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -916,7 +1376,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/schema.ChatReq"
+                            "$ref": "#/definitions/entities.ChatReq"
                         }
                     }
                 ],
@@ -934,13 +1394,340 @@
                         }
                     },
                     "401": {
-                        "description": "缺少认证 Cookie",
+                        "description": "认证 Cookie 缺失或无效",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
                     },
                     "500": {
                         "description": "提交消息失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/tool": {
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "name 必填；kind 为 0（本地工具）、1（A2A）、2（MCP）或 3（Skill）。本地工具和 Skill 异步初始化，创建成功不代表已就绪。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "工具"
+                ],
+                "summary": "新增工具",
+                "parameters": [
+                    {
+                        "description": "新增工具参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/entities.AddToolReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建成功，data 为 ID",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失或参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "新增工具失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/tool/find": {
+            "post": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "通过 JSON 请求体传入筛选和分页条件；limit 范围为 0 到 50，0 表示不限制数量；响应 offset 用于下一页查询。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "工具"
+                ],
+                "summary": "查询工具列表",
+                "parameters": [
+                    {
+                        "description": "查询工具列表参数",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/entities.GetToolListReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entities.GetToolListRsp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失或参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "查询工具列表失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/tool/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "返回工具基本信息及关联的 Agent ID 和名称。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "工具"
+                ],
+                "summary": "获取工具详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "工具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entities.GetToolInfoRsp"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失或参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "获取工具详情失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "按需更新工具名称、地址和关联 Agent。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "工具"
+                ],
+                "summary": "更新工具",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "工具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新工具参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/entities.UpdateToolReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失或参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "更新工具失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/tool/{id}/state": {
+            "put": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "state 为 0（准备中）、1（上线）或 2（下线）。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "工具"
+                ],
+                "summary": "更新工具状态",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "工具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新工具状态参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/entities.UpdateToolStateReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失或参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "更新工具状态失败",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -964,7 +1751,25 @@
                 }
             }
         },
-        "schema.AddApiKeyReq": {
+        "entities.AddAgentGroupReq": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "level": {
+                    "description": "智能程度",
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.AddApiKeyReq": {
             "type": "object",
             "properties": {
                 "key": {
@@ -981,11 +1786,29 @@
                 }
             }
         },
-        "schema.AddModelReq": {
+        "entities.AddMainAgentReq": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.AddModelReq": {
             "type": "object",
             "properties": {
                 "context_limit": {
                     "description": "上下文限制",
+                    "type": "integer"
+                },
+                "level": {
+                    "description": "智能程度。[0, 4]",
                     "type": "integer"
                 },
                 "name": {
@@ -998,7 +1821,7 @@
                 },
                 "reasoning": {
                     "description": "深度思考",
-                    "$ref": "#/definitions/schema.KeyValue"
+                    "$ref": "#/definitions/entities.KeyValue"
                 },
                 "type": {
                     "description": "模型类型。chat：对话模型；embedding：嵌入模型",
@@ -1010,7 +1833,79 @@
                 }
             }
         },
-        "schema.ApiKeyInfo": {
+        "entities.AddSubAgentReq": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "level": {
+                    "description": "智能程度",
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.AddToolReq": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "description": "agent id",
+                    "type": "string"
+                },
+                "kind": {
+                    "description": "类型。0：local tool; 1: a2a; 2: mcp; 3: skill",
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "名称",
+                    "type": "string"
+                },
+                "url": {
+                    "description": "远程服务地址，压缩包下载地址",
+                    "type": "string"
+                }
+            }
+        },
+        "entities.AgentInfo": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "integer"
+                },
+                "description": {
+                    "description": "描述",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "agent id",
+                    "type": "string"
+                },
+                "level": {
+                    "description": "智能程度",
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "名称",
+                    "type": "string"
+                },
+                "prompt": {
+                    "description": "提示词",
+                    "type": "string"
+                },
+                "type": {
+                    "description": "类型",
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.ApiKeyInfo": {
             "type": "object",
             "properties": {
                 "enable": {
@@ -1035,7 +1930,7 @@
                 }
             }
         },
-        "schema.ChatReq": {
+        "entities.ChatReq": {
             "type": "object",
             "properties": {
                 "content": {
@@ -1044,7 +1939,7 @@
                 }
             }
         },
-        "schema.GenerateSecretRsp": {
+        "entities.GenerateSecretRsp": {
             "type": "object",
             "properties": {
                 "version": {
@@ -1053,22 +1948,22 @@
                 }
             }
         },
-        "schema.GetChatMessagesRsp": {
+        "entities.GetChatMessagesRsp": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/schema.MessageInfo"
+                        "$ref": "#/definitions/entities.MessageInfo"
                     }
                 },
                 "offset": {
                     "description": "消息索引",
-                    "type": "string"
+                    "type": "integer"
                 }
             }
         },
-        "schema.GetModelsRsp": {
+        "entities.GetModelsRsp": {
             "type": "object",
             "properties": {
                 "enable": {
@@ -1078,6 +1973,10 @@
                 "id": {
                     "description": "model id",
                     "type": "string"
+                },
+                "level": {
+                    "description": "智能程度",
+                    "type": "integer"
                 },
                 "name": {
                     "description": "模型",
@@ -1093,13 +1992,13 @@
                 }
             }
         },
-        "schema.GetSessionListRsp": {
+        "entities.GetSessionListRsp": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/schema.SessionBase"
+                        "$ref": "#/definitions/entities.SessionBase"
                     }
                 },
                 "offset": {
@@ -1108,7 +2007,99 @@
                 }
             }
         },
-        "schema.InputRequiredReq": {
+        "entities.GetSubAgentsRsp": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entities.AgentInfo"
+                    }
+                },
+                "offset": {
+                    "description": "下次检索游标",
+                    "type": "string"
+                }
+            }
+        },
+        "entities.GetToolInfoRsp": {
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "description": "agent id",
+                    "type": "string"
+                },
+                "agent_name": {
+                    "description": "agent 名称",
+                    "type": "string"
+                },
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "integer"
+                },
+                "creator": {
+                    "description": "创建者",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "tool id",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "名称",
+                    "type": "string"
+                },
+                "state": {
+                    "description": "状态",
+                    "type": "integer"
+                },
+                "type": {
+                    "description": "类型",
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.GetToolListReq": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "description": "关联 agent id，为空时表示检索未关联的",
+                    "type": "string"
+                },
+                "limit": {
+                    "description": "最大返回数量",
+                    "type": "integer"
+                },
+                "offset": {
+                    "description": "检索游标",
+                    "type": "string"
+                },
+                "state": {
+                    "description": "状态",
+                    "type": "integer"
+                },
+                "type": {
+                    "description": "类型",
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.GetToolListRsp": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entities.ToolOfList"
+                    }
+                },
+                "offset": {
+                    "description": "下次检索使用的游标",
+                    "type": "string"
+                }
+            }
+        },
+        "entities.InputRequiredReq": {
             "type": "object",
             "properties": {
                 "call_id": {
@@ -1121,7 +2112,7 @@
                 }
             }
         },
-        "schema.KeyValue": {
+        "entities.KeyValue": {
             "type": "object",
             "properties": {
                 "key": {
@@ -1132,7 +2123,7 @@
                 }
             }
         },
-        "schema.MessageInfo": {
+        "entities.MessageInfo": {
             "type": "object",
             "properties": {
                 "content": {
@@ -1143,17 +2134,30 @@
                     "description": "创建时间",
                     "type": "integer"
                 },
-                "id": {
-                    "description": "消息 id",
-                    "type": "string"
-                },
                 "role": {
                     "description": "角色",
                     "type": "string"
                 }
             }
         },
-        "schema.SessionBase": {
+        "entities.ModifyAgentReq": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "level": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.SessionBase": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -1169,7 +2173,7 @@
                     "type": "string"
                 },
                 "state": {
-                    "description": "状态。1：运行中；2：结束；3：等待用户输入",
+                    "description": "状态。1：运行中；2：结束；3：等待用户输入；5：输入已就绪",
                     "type": "integer"
                 },
                 "updated_at": {
@@ -1178,7 +2182,40 @@
                 }
             }
         },
-        "schema.UpdateApiKeyReq": {
+        "entities.ToolOfList": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "integer"
+                },
+                "creator": {
+                    "description": "创建者",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "tool id",
+                    "type": "string"
+                },
+                "link": {
+                    "description": "是否关联",
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "名称",
+                    "type": "string"
+                },
+                "state": {
+                    "description": "状态",
+                    "type": "integer"
+                },
+                "type": {
+                    "description": "类型",
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.UpdateApiKeyReq": {
             "type": "object",
             "properties": {
                 "enable": {
@@ -1199,7 +2236,7 @@
                 }
             }
         },
-        "schema.UpdateModelReq": {
+        "entities.UpdateModelReq": {
             "type": "object",
             "properties": {
                 "context_limit": {
@@ -1209,6 +2246,10 @@
                 "enable": {
                     "description": "是否可用",
                     "type": "boolean"
+                },
+                "level": {
+                    "description": "智能程度",
+                    "type": "integer"
                 },
                 "name": {
                     "description": "模型名称",
@@ -1220,7 +2261,7 @@
                 },
                 "reasoning": {
                     "description": "深度思考",
-                    "$ref": "#/definitions/schema.KeyValue"
+                    "$ref": "#/definitions/entities.KeyValue"
                 },
                 "url": {
                     "description": "地址",
@@ -1228,7 +2269,33 @@
                 }
             }
         },
-        "schema.WaitInputInfo": {
+        "entities.UpdateToolReq": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "description": "agent id",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "名称",
+                    "type": "string"
+                },
+                "url": {
+                    "description": "地址",
+                    "type": "string"
+                }
+            }
+        },
+        "entities.UpdateToolStateReq": {
+            "type": "object",
+            "properties": {
+                "state": {
+                    "description": "状态",
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.WaitInputInfo": {
             "type": "object",
             "properties": {
                 "content": {

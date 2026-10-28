@@ -20,7 +20,7 @@ import (
 // @Param request body entities.AddModelReq true "模型配置，provider、name、url、type、context_limit 必填"
 // @Success 200 {object} common.Response{data=string} "创建成功，data 为模型 ID"
 // @Failure 400 {object} common.Response "缺少必填参数"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "创建模型失败"
 // @Router /v1/model [post]
 func (a *Api) AddModel(c *gin.Context) {
@@ -72,7 +72,7 @@ func (a *Api) AddModel(c *gin.Context) {
 // @Produce json
 // @Security CookieAuth
 // @Success 200 {object} common.Response{data=[]entities.GetModelsRsp} "模型列表"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "查询模型失败"
 // @Router /v1/model [get]
 func (a *Api) GetModels(c *gin.Context) {
@@ -115,7 +115,7 @@ func (a *Api) GetModels(c *gin.Context) {
 // @Param id path string true "模型 ID"
 // @Success 200 {object} common.Response{data=[]entities.ApiKeyInfo} "API Key 列表"
 // @Failure 400 {object} common.Response "缺少模型 ID"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "查询 API Key 失败"
 // @Router /v1/model/{id} [get]
 func (a *Api) GetModelInfo(c *gin.Context) {
@@ -167,7 +167,7 @@ func (a *Api) GetModelInfo(c *gin.Context) {
 // @Param request body entities.UpdateModelReq true "待更新的模型配置"
 // @Success 200 {object} common.Response "更新成功"
 // @Failure 400 {object} common.Response "缺少模型 ID"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "更新模型失败"
 // @Router /v1/model/{id} [put]
 func (a *Api) UpdateModel(c *gin.Context) {
@@ -225,7 +225,7 @@ func (a *Api) UpdateModel(c *gin.Context) {
 // @Param request body entities.AddApiKeyReq true "API Key 配置，key 必填"
 // @Success 200 {object} common.Response{data=int64} "创建成功，data 为 API Key ID"
 // @Failure 400 {object} common.Response "缺少模型 ID 或 API Key"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "新增 API Key 失败"
 // @Router /v1/model/{id}/key [post]
 func (a *Api) AddApiKey(c *gin.Context) {
@@ -271,7 +271,7 @@ func (a *Api) AddApiKey(c *gin.Context) {
 // @Param api path int64 true "API Key ID，不能为 0"
 // @Success 200 {object} common.Response "删除成功"
 // @Failure 400 {object} common.Response "缺少模型 ID 或 API Key ID"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "删除 API Key 失败"
 // @Router /v1/model/{id}/key/{api} [delete]
 func (a *Api) DeleteApiKey(c *gin.Context) {
@@ -311,7 +311,7 @@ func (a *Api) DeleteApiKey(c *gin.Context) {
 // @Param request body entities.UpdateApiKeyReq true "待更新的 API Key 配置"
 // @Success 200 {object} common.Response "更新成功"
 // @Failure 400 {object} common.Response "缺少模型 ID 或 API Key ID"
-// @Failure 401 {object} common.Response "缺少认证 Cookie"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "更新 API Key 失败"
 // @Router /v1/model/{id}/key/{api} [put]
 func (a *Api) UpdateApiKey(c *gin.Context) {

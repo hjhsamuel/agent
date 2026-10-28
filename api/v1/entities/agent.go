@@ -14,7 +14,7 @@ type AddAgentGroupReq struct {
 }
 
 type AddSubAgentReq struct {
-	ID          string `uri:"id"` // 父级 agent id
+	ID          string `uri:"id" swaggerignore:"true"` // 父级 agent id
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Prompt      string `json:"prompt"`
@@ -22,7 +22,7 @@ type AddSubAgentReq struct {
 }
 
 type ModifyAgentReq struct {
-	ID          string  `uri:"id"` // agent id
+	ID          string  `uri:"id" swaggerignore:"true"` // agent id
 	Name        *string `json:"name"`
 	Description *string `json:"description"`
 	Prompt      *string `json:"prompt"`

@@ -46,13 +46,13 @@ type GetToolInfoRsp struct {
 }
 
 type UpdateToolStateReq struct {
-	ID    string `uri:"id"`     // tool id
-	State int    `json:"state"` // 状态
+	ID    string `uri:"id" swaggerignore:"true"` // tool id
+	State int    `json:"state"`                  // 状态
 }
 
 type UpdateToolReq struct {
-	ID    string  `uri:"id"`     // tool id
-	Name  *string `json:"name"`  // 名称
-	Url   *string `json:"url"`   // 地址
-	Agent *string `json:"agent"` // agent id
+	ID    string  `uri:"id" swaggerignore:"true"` // tool id
+	Name  *string `json:"name"`                   // 名称
+	Url   *string `json:"url"`                    // 地址
+	Agent *string `json:"agent"`                  // agent id
 }

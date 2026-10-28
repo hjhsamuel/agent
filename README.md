@@ -107,9 +107,9 @@ excluded by `.gitignore`; store and back it up securely.
 ### Prerequisites
 
 - Go 1.27 or later, as specified in `go.mod`.
-- A MongoDB replica set or sharded cluster supporting multi-document transactions, initialized as described in section
-  6.
-- `mongosh` for database initialization, plus `mongod` if running MongoDB locally.
+- A MongoDB replica set or sharded cluster supporting multi-document transactions, initialized as described in
+  [MongoDB initialization](#mongodb).
+- `mongosh` for collection and index initialization.
 - An accessible model service compatible with OpenAI Chat Completions for conversations.
 
 Run the following commands from the project root. First, download dependencies:
@@ -143,90 +143,62 @@ shutdown sequence when it receives `SIGINT` or `SIGTERM`. Press `Ctrl+C` to stop
 
 ## MongoDB
 
-Each runner selects one chat model using the main agent's level and shares it across all local agents and compaction.
-The user session stores the last model ID, API key ID, and usage time, without credentials. Subsequent turns prefer
-the same model and key within a five-minute sliding window, refreshed when a turn completes or waits for input.
-If the selection expires, is removed or disabled, or no longer matches the main agent's level, a new selection is made.
-Existing sessions without this metadata select a model on their next turn. Normal messages, confirmation inputs,
-and recovered sessions all use this runner construction path.
-
-Input delivery is driven by business session state. A new message and its
-`SessionInputReady` state (5) are committed together. Confirmation answers remain
-in `WaitInput`; the final answer, display messages and ready state are committed
-in one transaction. Partial answers leave the session in `SessionWait` (3).
-After the runner persists input, a BeforeAgent hook moves ready to
-`SessionRunning` (1). Recovery submits input only for ready sessions, resumes
-running sessions with nil content, and leaves waiting sessions untouched.
-SessionService manages only ADK data; business recovery never reads its Events.
-The existing numeric states are unchanged; clients should treat state 5 as active.
-Old `adk_event_cursor` fields are ignored. Before upgrading, drain active turns
-and waiting sessions with already-completed answers: old running records do not
-reliably distinguish pending from delivered input, and old fully answered waiting
-records will no longer resume automatically.
-ADK input persistence and the business state update are independent writes. A
-crash between them can replay input; this protocol does not guarantee exactly-once
-input delivery or remote tool execution. No index migration is needed.
-
-Execute the following JavaScript in the `mongosh` session opened above. The script skips existing collections. Index
-creation can be repeated when the name and definition match an existing index; existing data must satisfy the unique
-constraints.
-
-The collection names below match the `cagent_*` names used by the application. If an older initialization script
-created unprefixed collections, run this script to provision the indexes on the actual application collections.
+Run in mongosh with the target database selected:
 
 ```javascript
-const cagentDb = db.getSiblingDB("cagent");
 const collections = [
-    "cagent_model", "cagent_tool", "cagent_session", "cagent_message",
+    "cagent_agent", "cagent_model", "cagent_tool", "cagent_session", "cagent_message",
     "cagent_adk_session", "cagent_adk_event", "cagent_adk_app_state", "cagent_adk_user_state"
 ];
-const existingCollections = new Set(cagentDb.getCollectionNames());
+const existingCollections = new Set(db.getCollectionNames());
 for (const name of collections) {
     if (!existingCollections.has(name)) {
-        cagentDb.createCollection(name);
+        db.createCollection(name);
     }
 }
 
 // Required for ADK correctness: unique session identities, event IDs, and shared state records.
-cagentDb.cagent_adk_session.createIndex(
+db.cagent_adk_session.createIndex(
     {app_name: 1, user_id: 1, session_id: 1},
     {unique: true, name: "uq_adk_session_identity"}
 );
-cagentDb.cagent_adk_event.createIndex(
+db.cagent_adk_event.createIndex(
     {session: 1, event_id: 1},
     {unique: true, name: "uq_adk_session_event_id"}
 );
-cagentDb.cagent_adk_event.createIndex(
+db.cagent_adk_event.createIndex(
     {session: 1, timestamp: -1, sequence: -1},
     {name: "ix_adk_session_event_history"}
 );
-cagentDb.cagent_adk_app_state.createIndex(
+db.cagent_adk_app_state.createIndex(
     {app_name: 1},
     {unique: true, name: "uq_adk_app_state"}
 );
-cagentDb.cagent_adk_user_state.createIndex(
+db.cagent_adk_user_state.createIndex(
     {app_name: 1, user_id: 1},
     {unique: true, name: "uq_adk_user_state"}
 );
 
 // Supporting indexes for application queries.
-cagentDb.cagent_session.createIndex(
+db.cagent_agent.createIndex(
+    {type: 1}, {name: "ix_agent_type"}
+);
+db.cagent_agent.createIndex(
+    {parent: 1}, {name: "ix_agent_parent"}
+);
+db.cagent_tool.createIndex(
+    {agent: 1}, {name: "ix_tool_agent"}
+);
+db.cagent_session.createIndex(
     {user: 1, _id: -1}, {name: "ix_session_user_id"}
 );
-cagentDb.cagent_message.createIndex(
+db.cagent_message.createIndex(
     {session: 1, _id: -1}, {name: "ix_message_session_id"}
 );
-cagentDb.cagent_model.createIndex(
+db.cagent_model.createIndex(
     {type: 1, enable: 1}, {name: "ix_model_type_enable"}
 );
-cagentDb.cagent_tool.createIndex(
+db.cagent_tool.createIndex(
     {enable: 1}, {name: "ix_tool_enable"}
 );
-
-// Inspect collections and indexes.
-printjson(cagentDb.getCollectionNames());
-for (const name of collections) {
-    print(name);
-    printjson(cagentDb.getCollection(name).getIndexes());
-}
 ```

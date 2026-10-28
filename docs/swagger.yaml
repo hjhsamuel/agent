@@ -8,7 +8,19 @@ definitions:
       message:
         type: string
     type: object
-  schema.AddApiKeyReq:
+  entities.AddAgentGroupReq:
+    properties:
+      description:
+        type: string
+      level:
+        description: 智能程度
+        type: integer
+      name:
+        type: string
+      prompt:
+        type: string
+    type: object
+  entities.AddApiKeyReq:
     properties:
       key:
         description: api key
@@ -20,10 +32,22 @@ definitions:
         description: 权重
         type: integer
     type: object
-  schema.AddModelReq:
+  entities.AddMainAgentReq:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      prompt:
+        type: string
+    type: object
+  entities.AddModelReq:
     properties:
       context_limit:
         description: 上下文限制
+        type: integer
+      level:
+        description: 智能程度。[0, 4]
         type: integer
       name:
         description: 模型名称，例如：glm-5.3，deepseek-v4-pro
@@ -32,7 +56,7 @@ definitions:
         description: 供应商名称，仅用于展示，例如：GLM、DeepSeek
         type: string
       reasoning:
-        $ref: '#/definitions/schema.KeyValue'
+        $ref: '#/definitions/entities.KeyValue'
         description: 深度思考
       type:
         description: 模型类型。chat：对话模型；embedding：嵌入模型
@@ -41,7 +65,58 @@ definitions:
         description: 地址
         type: string
     type: object
-  schema.ApiKeyInfo:
+  entities.AddSubAgentReq:
+    properties:
+      description:
+        type: string
+      level:
+        description: 智能程度
+        type: integer
+      name:
+        type: string
+      prompt:
+        type: string
+    type: object
+  entities.AddToolReq:
+    properties:
+      agent:
+        description: agent id
+        type: string
+      kind:
+        description: '类型。0：local tool; 1: a2a; 2: mcp; 3: skill'
+        type: integer
+      name:
+        description: 名称
+        type: string
+      url:
+        description: 远程服务地址，压缩包下载地址
+        type: string
+    type: object
+  entities.AgentInfo:
+    properties:
+      created_at:
+        description: 创建时间
+        type: integer
+      description:
+        description: 描述
+        type: string
+      id:
+        description: agent id
+        type: string
+      level:
+        description: 智能程度
+        type: integer
+      name:
+        description: 名称
+        type: string
+      prompt:
+        description: 提示词
+        type: string
+      type:
+        description: 类型
+        type: integer
+    type: object
+  entities.ApiKeyInfo:
     properties:
       enable:
         description: 是否可用
@@ -59,29 +134,29 @@ definitions:
         description: 权重
         type: integer
     type: object
-  schema.ChatReq:
+  entities.ChatReq:
     properties:
       content:
         description: 对话消息
         type: string
     type: object
-  schema.GenerateSecretRsp:
+  entities.GenerateSecretRsp:
     properties:
       version:
         description: 密钥版本
         type: integer
     type: object
-  schema.GetChatMessagesRsp:
+  entities.GetChatMessagesRsp:
     properties:
       data:
         items:
-          $ref: '#/definitions/schema.MessageInfo'
+          $ref: '#/definitions/entities.MessageInfo'
         type: array
       offset:
         description: 消息索引
-        type: string
+        type: integer
     type: object
-  schema.GetModelsRsp:
+  entities.GetModelsRsp:
     properties:
       enable:
         description: 是否可用
@@ -89,6 +164,9 @@ definitions:
       id:
         description: model id
         type: string
+      level:
+        description: 智能程度
+        type: integer
       name:
         description: 模型
         type: string
@@ -99,17 +177,82 @@ definitions:
         description: 类型
         type: string
     type: object
-  schema.GetSessionListRsp:
+  entities.GetSessionListRsp:
     properties:
       data:
         items:
-          $ref: '#/definitions/schema.SessionBase'
+          $ref: '#/definitions/entities.SessionBase'
         type: array
       offset:
         description: 下次检索使用的索引
         type: string
     type: object
-  schema.InputRequiredReq:
+  entities.GetSubAgentsRsp:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/entities.AgentInfo'
+        type: array
+      offset:
+        description: 下次检索游标
+        type: string
+    type: object
+  entities.GetToolInfoRsp:
+    properties:
+      agent_id:
+        description: agent id
+        type: string
+      agent_name:
+        description: agent 名称
+        type: string
+      created_at:
+        description: 创建时间
+        type: integer
+      creator:
+        description: 创建者
+        type: string
+      id:
+        description: tool id
+        type: string
+      name:
+        description: 名称
+        type: string
+      state:
+        description: 状态
+        type: integer
+      type:
+        description: 类型
+        type: integer
+    type: object
+  entities.GetToolListReq:
+    properties:
+      agent:
+        description: 关联 agent id，为空时表示检索未关联的
+        type: string
+      limit:
+        description: 最大返回数量
+        type: integer
+      offset:
+        description: 检索游标
+        type: string
+      state:
+        description: 状态
+        type: integer
+      type:
+        description: 类型
+        type: integer
+    type: object
+  entities.GetToolListRsp:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/entities.ToolOfList'
+        type: array
+      offset:
+        description: 下次检索使用的游标
+        type: string
+    type: object
+  entities.InputRequiredReq:
     properties:
       call_id:
         description: 任务 id
@@ -118,14 +261,14 @@ definitions:
         description: 用户补充内容
         type: string
     type: object
-  schema.KeyValue:
+  entities.KeyValue:
     properties:
       key:
         type: string
       value:
         type: string
     type: object
-  schema.MessageInfo:
+  entities.MessageInfo:
     properties:
       content:
         description: 内容
@@ -133,14 +276,22 @@ definitions:
       created_at:
         description: 创建时间
         type: integer
-      id:
-        description: 消息 id
-        type: string
       role:
         description: 角色
         type: string
     type: object
-  schema.SessionBase:
+  entities.ModifyAgentReq:
+    properties:
+      description:
+        type: string
+      level:
+        type: integer
+      name:
+        type: string
+      prompt:
+        type: string
+    type: object
+  entities.SessionBase:
     properties:
       created_at:
         description: 创建时间
@@ -152,13 +303,37 @@ definitions:
         description: 会话标题
         type: string
       state:
-        description: 状态。1：运行中；2：结束；3：等待用户输入
+        description: 状态。1：运行中；2：结束；3：等待用户输入；5：输入已就绪
         type: integer
       updated_at:
         description: 最后对话时间
         type: integer
     type: object
-  schema.UpdateApiKeyReq:
+  entities.ToolOfList:
+    properties:
+      created_at:
+        description: 创建时间
+        type: integer
+      creator:
+        description: 创建者
+        type: string
+      id:
+        description: tool id
+        type: string
+      link:
+        description: 是否关联
+        type: boolean
+      name:
+        description: 名称
+        type: string
+      state:
+        description: 状态
+        type: integer
+      type:
+        description: 类型
+        type: integer
+    type: object
+  entities.UpdateApiKeyReq:
     properties:
       enable:
         description: 是否可用
@@ -173,7 +348,7 @@ definitions:
         description: 权重
         type: integer
     type: object
-  schema.UpdateModelReq:
+  entities.UpdateModelReq:
     properties:
       context_limit:
         description: 上下文限制
@@ -181,6 +356,9 @@ definitions:
       enable:
         description: 是否可用
         type: boolean
+      level:
+        description: 智能程度
+        type: integer
       name:
         description: 模型名称
         type: string
@@ -188,13 +366,31 @@ definitions:
         description: 供应商
         type: string
       reasoning:
-        $ref: '#/definitions/schema.KeyValue'
+        $ref: '#/definitions/entities.KeyValue'
         description: 深度思考
       url:
         description: 地址
         type: string
     type: object
-  schema.WaitInputInfo:
+  entities.UpdateToolReq:
+    properties:
+      agent:
+        description: agent id
+        type: string
+      name:
+        description: 名称
+        type: string
+      url:
+        description: 地址
+        type: string
+    type: object
+  entities.UpdateToolStateReq:
+    properties:
+      state:
+        description: 状态
+        type: integer
+    type: object
+  entities.WaitInputInfo:
     properties:
       content:
         description: 提示内容
@@ -206,6 +402,283 @@ definitions:
 info:
   contact: {}
 paths:
+  /v1/agent/{id}:
+    delete:
+      parameters:
+      - description: Agent ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 请求成功
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 必填参数缺失或参数无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 删除 Agent失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 删除 Agent
+      tags:
+      - Agent
+    put:
+      consumes:
+      - application/json
+      description: 按需更新配置；level 为 0（低）、1（中）或 2（高）。
+      parameters:
+      - description: Agent ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 更新 Agent参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.ModifyAgentReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 请求成功
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 必填参数缺失或参数无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 更新 Agent失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 更新 Agent
+      tags:
+      - Agent
+  /v1/agent/{id}/sub:
+    get:
+      description: 按 Agent ID 升序分页，使用返回的 offset 查询下一页。当前实现尚未绑定查询参数，且类型校验会始终返回 400。
+      parameters:
+      - description: 父级 Agent ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 上一页返回的游标，首次查询不传
+        in: query
+        name: offset
+        type: string
+      - description: 最大返回数量，0 表示不限制
+        in: query
+        maximum: 50
+        minimum: 0
+        name: limit
+        type: integer
+      - description: Agent 类型：1 为分组，2 为子 Agent
+        enum:
+        - 1
+        - 2
+        in: query
+        name: type
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 请求成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entities.GetSubAgentsRsp'
+              type: object
+        "400":
+          description: 必填参数缺失或参数无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 获取子 Agent 列表失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 获取子 Agent 列表
+      tags:
+      - Agent
+    post:
+      consumes:
+      - application/json
+      description: 在主 Agent 或分组下创建子 Agent；name、description、prompt 必填。
+      parameters:
+      - description: 父级 Agent ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 新增子 Agent参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.AddSubAgentReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功，data 为 ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 必填参数缺失或参数无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 新增子 Agent失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 新增子 Agent
+      tags:
+      - Agent
+  /v1/agent/group:
+    post:
+      consumes:
+      - application/json
+      description: 创建主 Agent 下的分组；name、description、prompt 必填。
+      parameters:
+      - description: 新增 Agent 分组参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.AddAgentGroupReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功，data 为 ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 必填参数缺失或参数无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 新增 Agent 分组失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 新增 Agent 分组
+      tags:
+      - Agent
+  /v1/agent/main:
+    get:
+      description: 未找到主 Agent 时返回 500。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 请求成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entities.AgentInfo'
+              type: object
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 获取主 Agent 信息失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 获取主 Agent 信息
+      tags:
+      - Agent
+    post:
+      consumes:
+      - application/json
+      description: 名称、描述和提示词为空时使用默认值，智能程度默认为中等。
+      parameters:
+      - description: 新增主 Agent参数
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/entities.AddMainAgentReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功，data 为 ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 新增主 Agent失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 新增主 Agent
+      tags:
+      - Agent
   /v1/model:
     get:
       produces:
@@ -219,11 +692,11 @@ paths:
             - properties:
                 data:
                   items:
-                    $ref: '#/definitions/schema.GetModelsRsp'
+                    $ref: '#/definitions/entities.GetModelsRsp'
                   type: array
               type: object
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -245,7 +718,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/schema.AddModelReq'
+          $ref: '#/definitions/entities.AddModelReq'
       produces:
       - application/json
       responses:
@@ -263,7 +736,7 @@ paths:
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -295,7 +768,7 @@ paths:
             - properties:
                 data:
                   items:
-                    $ref: '#/definitions/schema.ApiKeyInfo'
+                    $ref: '#/definitions/entities.ApiKeyInfo'
                   type: array
               type: object
         "400":
@@ -303,7 +776,7 @@ paths:
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -330,7 +803,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/schema.UpdateModelReq'
+          $ref: '#/definitions/entities.UpdateModelReq'
       produces:
       - application/json
       responses:
@@ -343,7 +816,7 @@ paths:
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -371,7 +844,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/schema.AddApiKeyReq'
+          $ref: '#/definitions/entities.AddApiKeyReq'
       produces:
       - application/json
       responses:
@@ -389,7 +862,7 @@ paths:
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -426,7 +899,7 @@ paths:
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -458,7 +931,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/schema.UpdateApiKeyReq'
+          $ref: '#/definitions/entities.UpdateApiKeyReq'
       produces:
       - application/json
       responses:
@@ -471,7 +944,7 @@ paths:
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -496,10 +969,10 @@ paths:
             - $ref: '#/definitions/common.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/schema.GenerateSecretRsp'
+                  $ref: '#/definitions/entities.GenerateSecretRsp'
               type: object
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -536,14 +1009,14 @@ paths:
             - $ref: '#/definitions/common.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/schema.GetSessionListRsp'
+                  $ref: '#/definitions/entities.GetSessionListRsp'
               type: object
         "400":
           description: limit 不在允许范围内
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -575,7 +1048,7 @@ paths:
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -607,7 +1080,7 @@ paths:
             - properties:
                 data:
                   items:
-                    $ref: '#/definitions/schema.WaitInputInfo'
+                    $ref: '#/definitions/entities.WaitInputInfo'
                   type: array
               type: object
         "400":
@@ -615,7 +1088,7 @@ paths:
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -641,7 +1114,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/schema.InputRequiredReq'
+          $ref: '#/definitions/entities.InputRequiredReq'
       produces:
       - application/json
       responses:
@@ -654,7 +1127,7 @@ paths:
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -668,7 +1141,7 @@ paths:
       - 会话
   /v1/session/{id}/message:
     get:
-      description: 按消息 ID 倒序返回历史消息，使用响应中的 offset 查询下一页；limit 为 0 或不传时不限制数量。
+      description: 按消息 ID 倒序返回历史消息，使用响应中的 offset 查询下一页。
       parameters:
       - description: 会话 ID
         in: path
@@ -678,12 +1151,12 @@ paths:
       - description: 上一页返回的消息索引，首次查询不传
         in: query
         name: offset
-        type: string
-      - default: 0
-        description: 最大返回数量，0 表示不限制
+        type: integer
+      - description: 最大返回轮次数量，必须大于 0
         in: query
-        minimum: 0
+        minimum: 1
         name: limit
+        required: true
         type: integer
       produces:
       - application/json
@@ -695,14 +1168,14 @@ paths:
             - $ref: '#/definitions/common.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/schema.GetChatMessagesRsp'
+                  $ref: '#/definitions/entities.GetChatMessagesRsp'
               type: object
         "400":
-          description: 缺少会话 ID 或 limit 小于 0
+          description: 缺少会话 ID 或 limit 小于等于 0
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -729,7 +1202,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/schema.ChatReq'
+          $ref: '#/definitions/entities.ChatReq'
       produces:
       - application/json
       responses:
@@ -742,7 +1215,7 @@ paths:
           schema:
             $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -780,8 +1253,12 @@ paths:
           description: SSE 事件流
           schema:
             type: string
+        "400":
+          description: 指定会话不存在
+          schema:
+            $ref: '#/definitions/common.Response'
         "401":
-          description: 缺少认证 Cookie
+          description: 认证 Cookie 缺失或无效
           schema:
             $ref: '#/definitions/common.Response'
         "500":
@@ -793,4 +1270,204 @@ paths:
       summary: 订阅会话事件流
       tags:
       - 会话
+  /v1/tool:
+    post:
+      consumes:
+      - application/json
+      description: name 必填；kind 为 0（本地工具）、1（A2A）、2（MCP）或 3（Skill）。本地工具和 Skill 异步初始化，创建成功不代表已就绪。
+      parameters:
+      - description: 新增工具参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.AddToolReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功，data 为 ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 必填参数缺失或参数无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 新增工具失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 新增工具
+      tags:
+      - 工具
+  /v1/tool/{id}:
+    get:
+      description: 返回工具基本信息及关联的 Agent ID 和名称。
+      parameters:
+      - description: 工具 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 请求成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entities.GetToolInfoRsp'
+              type: object
+        "400":
+          description: 必填参数缺失或参数无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 获取工具详情失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 获取工具详情
+      tags:
+      - 工具
+    put:
+      consumes:
+      - application/json
+      description: 按需更新工具名称、地址和关联 Agent。
+      parameters:
+      - description: 工具 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 更新工具参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.UpdateToolReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 请求成功
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 必填参数缺失或参数无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 更新工具失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 更新工具
+      tags:
+      - 工具
+  /v1/tool/{id}/state:
+    put:
+      consumes:
+      - application/json
+      description: state 为 0（准备中）、1（上线）或 2（下线）。
+      parameters:
+      - description: 工具 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 更新工具状态参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.UpdateToolStateReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 请求成功
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 必填参数缺失或参数无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 更新工具状态失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 更新工具状态
+      tags:
+      - 工具
+  /v1/tool/find:
+    post:
+      consumes:
+      - application/json
+      description: 通过 JSON 请求体传入筛选和分页条件；limit 范围为 0 到 50，0 表示不限制数量；响应 offset 用于下一页查询。
+      parameters:
+      - description: 查询工具列表参数
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/entities.GetToolListReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 请求成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entities.GetToolListRsp'
+              type: object
+        "400":
+          description: 必填参数缺失或参数无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 查询工具列表失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 查询工具列表
+      tags:
+      - 工具
 swagger: "2.0"

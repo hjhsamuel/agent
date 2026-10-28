@@ -12,6 +12,19 @@ import (
 	"github.com/hjhsamuel/agent/internal/store/request"
 )
 
+// AddTool 新增工具。
+// @Summary 新增工具
+// @Description name 必填；kind 为 0（本地工具）、1（A2A）、2（MCP）或 3（Skill）。本地工具和 Skill 异步初始化，创建成功不代表已就绪。
+// @Tags 工具
+// @Accept json
+// @Produce json
+// @Security CookieAuth
+// @Param request body entities.AddToolReq true "新增工具参数"
+// @Success 200 {object} common.Response{data=string} "创建成功，data 为 ID"
+// @Failure 400 {object} common.Response "必填参数缺失或参数无效"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
+// @Failure 500 {object} common.Response "新增工具失败"
+// @Router /v1/tool [post]
 func (a *Api) AddTool(c *gin.Context) {
 	var req entities.AddToolReq
 	_ = c.ShouldBindJSON(&req)
@@ -48,6 +61,19 @@ func (a *Api) AddTool(c *gin.Context) {
 	}
 }
 
+// GetToolList 查询工具列表。
+// @Summary 查询工具列表
+// @Description 通过 JSON 请求体传入筛选和分页条件；limit 范围为 0 到 50，0 表示不限制数量；响应 offset 用于下一页查询。
+// @Tags 工具
+// @Accept json
+// @Produce json
+// @Security CookieAuth
+// @Param request body entities.GetToolListReq false "查询工具列表参数"
+// @Success 200 {object} common.Response{data=entities.GetToolListRsp} "请求成功"
+// @Failure 400 {object} common.Response "必填参数缺失或参数无效"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
+// @Failure 500 {object} common.Response "查询工具列表失败"
+// @Router /v1/tool/find [post]
 func (a *Api) GetToolList(c *gin.Context) {
 	var req entities.GetToolListReq
 	_ = c.ShouldBindJSON(&req)
@@ -101,6 +127,18 @@ func (a *Api) GetToolList(c *gin.Context) {
 	})
 }
 
+// GetToolInfo 获取工具详情。
+// @Summary 获取工具详情
+// @Description 返回工具基本信息及关联的 Agent ID 和名称。
+// @Tags 工具
+// @Produce json
+// @Security CookieAuth
+// @Param id path string true "工具 ID"
+// @Success 200 {object} common.Response{data=entities.GetToolInfoRsp} "请求成功"
+// @Failure 400 {object} common.Response "必填参数缺失或参数无效"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
+// @Failure 500 {object} common.Response "获取工具详情失败"
+// @Router /v1/tool/{id} [get]
 func (a *Api) GetToolInfo(c *gin.Context) {
 	var req entities.GetToolInfoReq
 	_ = c.ShouldBindUri(&req)
@@ -142,6 +180,20 @@ func (a *Api) GetToolInfo(c *gin.Context) {
 	})
 }
 
+// UpdateToolState 更新工具状态。
+// @Summary 更新工具状态
+// @Description state 为 0（准备中）、1（上线）或 2（下线）。
+// @Tags 工具
+// @Accept json
+// @Produce json
+// @Security CookieAuth
+// @Param id path string true "工具 ID"
+// @Param request body entities.UpdateToolStateReq true "更新工具状态参数"
+// @Success 200 {object} common.Response "请求成功"
+// @Failure 400 {object} common.Response "必填参数缺失或参数无效"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
+// @Failure 500 {object} common.Response "更新工具状态失败"
+// @Router /v1/tool/{id}/state [put]
 func (a *Api) UpdateToolState(c *gin.Context) {
 	var req entities.UpdateToolStateReq
 	_ = c.ShouldBindUri(&req)
@@ -168,6 +220,20 @@ func (a *Api) UpdateToolState(c *gin.Context) {
 	}
 }
 
+// UpdateTool 更新工具。
+// @Summary 更新工具
+// @Description 按需更新工具名称、地址和关联 Agent。
+// @Tags 工具
+// @Accept json
+// @Produce json
+// @Security CookieAuth
+// @Param id path string true "工具 ID"
+// @Param request body entities.UpdateToolReq true "更新工具参数"
+// @Success 200 {object} common.Response "请求成功"
+// @Failure 400 {object} common.Response "必填参数缺失或参数无效"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
+// @Failure 500 {object} common.Response "更新工具失败"
+// @Router /v1/tool/{id} [put]
 func (a *Api) UpdateTool(c *gin.Context) {
 	var req entities.UpdateToolReq
 	_ = c.ShouldBindUri(&req)
