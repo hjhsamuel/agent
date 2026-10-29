@@ -284,7 +284,7 @@ func (a *Api) GetMainAgentInfo(c *gin.Context) {
 
 // GetSubAgents 获取子 Agent 列表。
 // @Summary 获取子 Agent 列表
-// @Description 按 Agent ID 升序分页，使用返回的 offset 查询下一页。当前实现尚未绑定查询参数，且类型校验会始终返回 400。
+// @Description 按 Agent ID 升序分页，使用返回的 offset 查询下一页。
 // @Tags Agent
 // @Produce json
 // @Security CookieAuth
@@ -300,6 +300,7 @@ func (a *Api) GetMainAgentInfo(c *gin.Context) {
 func (a *Api) GetSubAgents(c *gin.Context) {
 	var req entities.GetSubAgentsReq
 	_ = c.ShouldBindUri(&req)
+	_ = c.ShouldBindQuery(&req)
 
 	if req.ID == "" {
 		c.JSON(http.StatusBadRequest, &common.Response{
@@ -315,7 +316,7 @@ func (a *Api) GetSubAgents(c *gin.Context) {
 		})
 		return
 	}
-	if req.Type != int(schema.AgentTypeGroup) || req.Type != int(schema.AgentTypeSub) {
+	if req.Type != int(schema.AgentTypeGroup) && req.Type != int(schema.AgentTypeSub) {
 		c.JSON(http.StatusBadRequest, &common.Response{
 			Code:    http.StatusBadRequest,
 			Message: "invalid argument: type is invalid",

@@ -314,7 +314,7 @@ const docTemplate = `{
                         "CookieAuth": []
                     }
                 ],
-                "description": "按 Agent ID 升序分页，使用返回的 offset 查询下一页。当前实现尚未绑定查询参数，且类型校验会始终返回 400。",
+                "description": "按 Agent ID 升序分页，使用返回的 offset 查询下一页。",
                 "produces": [
                     "application/json"
                 ],
