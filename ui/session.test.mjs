@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 const code=(await readFile(new URL('./dist/app.js',import.meta.url),'utf8')).replace("import './admin.js';",'').replace("import {renderMarkdown} from './markdown.js';",'').replace(/\nstart\(\);/,'');
-function setup(status){
+function setup(status,pages){
  const calls=[],streams=[],elements=new Map();
- const element=()=>({children:[],textContent:'',value:'',append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},querySelector(){return null;},addEventListener(){},setAttribute(){}});
+ const element=()=>({children:[],scrollTop:0,get scrollHeight(){return this.children.length*100;},textContent:'',value:'',append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},querySelector(){return null;},addEventListener(){},setAttribute(){}});
  const context=vm.createContext({renderMarkdown,document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element},URLSearchParams,BigInt,setTimeout:()=>1,clearTimeout(){},fetch:async url=>{
   calls.push(url);let data;
   if(url.endsWith('/abc'))data={state:status};
-  else if(url.includes('/message?'))data={data:[{role:'assistant',content:'saved answer'}],offset:1};
+  else if(url.includes('/message?'))data=pages?pages.shift():{data:[{role:'assistant',content:'saved answer'}],offset:1};
   else if(url.endsWith('/input'))data=[];
   else data={data:[],offset:''};
   return {ok:true,json:async()=>({code:200,data})};
@@ -40,4 +40,20 @@ test('new session connects only on first send and waits for init before posting'
  await sending;
  assert.ok(s.calls.includes('/cagent/v1/session/abc/message'));
  assert.equal(vm.runInContext("$('messages').children[0].children[1].innerHTML",s.context),'<p><strong>hello</strong></p>');
+});
+
+test('history loads three at a time, starts at bottom and preserves position on prepend',async()=>{
+ const msg=content=>({role:'assistant',content});
+ const s=setup(2,[{data:[msg('6'),msg('5'),msg('4')],offset:3},{data:[msg('3'),msg('2'),msg('1')],offset:6},{data:[],offset:6}]);
+ await vm.runInContext("open('abc')",s.context);
+ assert.ok(s.calls.includes('/cagent/v1/session/abc/message?limit=3&offset=0'));
+ assert.equal(vm.runInContext("$('messages').scrollTop",s.context),300);
+ await vm.runInContext("$('messages').scrollTop=0;Promise.all([loadOlder(),loadOlder()])",s.context);
+ assert.equal(s.calls.filter(url=>url.includes('offset=3')).length,1);
+ assert.equal(vm.runInContext("$('messages').scrollTop",s.context),300);
+ assert.equal(vm.runInContext("$('messages').children.map(el=>el.children[1].markdown).join(',')",s.context),'1,2,3,4,5,6');
+ await vm.runInContext('loadOlder()',s.context);
+ const count=s.calls.length;
+ await vm.runInContext('loadOlder()',s.context);
+ assert.equal(s.calls.length,count);
 });

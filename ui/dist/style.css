@@ -16,3 +16,5 @@
 .markdown-preview th{background:#e3eaf1;font-weight:600}
 .markdown-preview li>input[type=checkbox]{display:inline-block;width:auto;margin:0 6px 0 0}
 .message-content pre{white-space:pre;overflow-wrap:normal}
+
+.message.user{max-width:70%;margin-left:auto}.markdown-preview pre,.markdown-preview pre code,.message-content pre{background:#f0f0f0}#messages{overflow-anchor:none}

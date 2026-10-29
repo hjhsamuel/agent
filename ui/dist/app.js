@@ -2,6 +2,8 @@ import {renderMarkdown} from './markdown.js';
 const $ = id => document.getElementById(id);
 let current='', source, seq='', generation=0, busy=false, connected=false, answer, reasoning, sessionOffset='', historyOffset=0;
 let transcriptEpoch=0, stateTimer, pendingConnection;
+const historyLimit=3;
+let historyMore=false, historyLoading;
 const api='/cagent/v1/session';
 function notice(message=''){ $('notice').textContent=message; $('notice').hidden=!message; }
 function state(text){$('status').textContent=text; $('send').disabled=busy||(!!current&&!connected);}
@@ -34,7 +36,7 @@ async function checkState(version){
   source?.close();source=undefined;clearTimeout(stateTimer);
   // Invalidate callbacks already queued by the closed EventSource.
   const nextVersion=++generation;
-  busy=true;connected=false;state('正在加载完整历史…');
+  busy=true;connected=false;state('正在加载最近消息…');
   try{await history(id,nextVersion);if(nextVersion!==generation)return;
     busy=false;connected=true;answer=reasoning=undefined;$('inputs').replaceChildren();state('已完成');
     await sessions();
@@ -77,17 +79,31 @@ function input(item,version){
   $('inputs').append(form);
 }
 async function history(id,version,older=false){
-  const epoch=transcriptEpoch;
-  const data=await request('/'+id+'/message?limit=30&offset='+(older?historyOffset:0));if(version!==generation||epoch!==transcriptEpoch)return;
-  historyOffset=data.offset;
-  const existing=[...$('messages').children];$('messages').replaceChildren();
-  if(data.data.length===30){const button=document.createElement('button');button.textContent='加载更早消息';button.onclick=()=>{button.remove();history(id,version,true).catch(error=>notice(error.message));};$('messages').append(button);}
-  for(const item of [...data.data].reverse())message(item.role,item.content);
-  if(older)$('messages').append(...existing);
+  if(older&&(!historyMore||historyLoading))return;
+  const epoch=transcriptEpoch, token={};historyLoading=token;
+  try{
+    const data=await request('/'+id+'/message?limit='+historyLimit+'&offset='+(older?historyOffset:0));
+    if(version!==generation||epoch!==transcriptEpoch)return;
+    const el=$('messages'),height=el.scrollHeight,top=el.scrollTop;
+    const existing=older?[...el.children]:[];
+    historyOffset=data.offset;historyMore=data.data.length===historyLimit;
+    el.replaceChildren();
+    for(const item of [...data.data].reverse())message(item.role,item.content);
+    if(older){el.append(...existing);el.scrollTop=top+el.scrollHeight-height;}
+    else el.scrollTop=el.scrollHeight;
+  }finally{if(historyLoading===token)historyLoading=undefined;}
 }
+function loadOlder(){
+  if(!current||busy||!historyMore||historyLoading)return;
+  const version=generation;
+  return history(current,version,true).catch(error=>{if(version===generation)notice(error.message);});
+}
+$('messages').addEventListener('scroll',()=>{if($('messages').scrollTop<=0)loadOlder();});
+// A short page may not overflow yet; upward wheel input still loads its previous page.
+$('messages').addEventListener('wheel',event=>{if(event.deltaY<0&&$('messages').scrollTop<=0)loadOlder();},{passive:true});
 async function open(id='',title='新对话',status=2){
   pendingConnection?.(Error('已切换会话'));pendingConnection=undefined;
-  const version=++generation;clearTimeout(stateTimer);transcriptEpoch++;source?.close();source=undefined;current=id;seq='';busy=status===1||status===5;connected=false;answer=reasoning=undefined;
+  const version=++generation;clearTimeout(stateTimer);transcriptEpoch++;source?.close();source=undefined;current=id;seq='';historyOffset=0;historyMore=false;historyLoading=undefined;busy=status===1||status===5;connected=false;answer=reasoning=undefined;
   $('title').textContent=title||'未命名对话';$('messages').replaceChildren();$('inputs').replaceChildren();$('delete').hidden=!id;notice();state('正在加载…');
   try{
     if(id){const info=await request('/'+id);if(version!==generation)return;
@@ -100,7 +116,7 @@ async function open(id='',title='新对话',status=2){
 }
 $('composer').onsubmit=async event=>{
   event.preventDefault();const content=$('prompt').value.trim();if(!content||busy||(!!current&&!connected))return;
-  const version=generation;transcriptEpoch++;busy=true;answer=reasoning=undefined;state('正在发送…');notice();
+  const version=generation;transcriptEpoch++;historyMore=false;historyLoading=undefined;busy=true;answer=reasoning=undefined;state('正在发送…');notice();
   const sent=message('user',content);$('prompt').value='';$('messages').scrollTop=$('messages').scrollHeight;
   try{
     if(!current){await new Promise((resolve,reject)=>{pendingConnection=reject;subscribe('',version,()=>{pendingConnection=undefined;resolve();});});if(version!==generation)return;}
