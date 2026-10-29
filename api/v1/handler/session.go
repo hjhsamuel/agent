@@ -364,3 +364,54 @@ func (a *Api) WaitInputList(c *gin.Context) {
 		Data: rsp,
 	})
 }
+
+// GetSessionInfo returns the current user's authoritative session state.
+// @Summary 获取会话当前状态
+// @Tags 会话
+// @Produce json
+// @Security CookieAuth
+// @Param id path string true "会话 ID"
+// @Success 200 {object} common.Response{data=entities.SessionBase}
+// @Failure 404 {object} common.Response
+// @Router /v1/session/{id} [get]
+func (a *Api) GetSessionInfo(c *gin.Context) {
+	var req entities.GetSessionInfoReq
+	_ = c.ShouldBindUri(&req)
+
+	if req.ID == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id is required",
+		})
+		return
+	}
+
+	auth := common.GetAuth(c)
+
+	obj, err := a.srv.GetSession(strconv.Itoa(auth.ID), req.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: err.Error(),
+		})
+		return
+	}
+	if obj == nil {
+		c.JSON(http.StatusNotFound, &common.Response{
+			Code:    http.StatusNotFound,
+			Message: "session not found",
+		})
+		return
+	}
+	rsp := &entities.SessionBase{
+		ID:        obj.ID.Hex(),
+		Name:      obj.Name,
+		State:     int(obj.State),
+		CreatedAt: obj.CreatedAt.Unix(),
+		UpdatedAt: obj.UpdatedAt.Unix(),
+	}
+	c.JSON(http.StatusOK, &common.Response{
+		Code: 200,
+		Data: rsp,
+	})
+}

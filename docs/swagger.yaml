@@ -1060,6 +1060,34 @@ paths:
       summary: 删除会话
       tags:
       - 会话
+    get:
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entities.SessionBase'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 获取会话当前状态
+      tags:
+      - 会话
   /v1/session/{id}/input:
     get:
       description: 返回任务 ID 和提示内容，可使用任务 ID 作为 call_id 提交用户补充内容。

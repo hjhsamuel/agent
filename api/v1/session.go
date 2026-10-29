@@ -14,6 +14,7 @@ func sessionRoute(api *handler.Api, g *gin.RouterGroup) {
 	group.DELETE("/:id", api.DeleteSession)
 
 	group.GET("/stream", api.Stream)
+	group.GET("/:id", api.GetSessionInfo)
 
 	group.POST("/:id/message", api.Chat)
 	group.GET("/:id/message", api.GetChatMessages)

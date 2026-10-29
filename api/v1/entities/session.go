@@ -68,3 +68,7 @@ type WaitInputInfo struct {
 	ID      string `json:"id"`      // call id
 	Content string `json:"content"` // 提示内容
 }
+
+type GetSessionInfoReq struct {
+	ID string `uri:"id"` // session id
+}
