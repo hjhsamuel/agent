@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -170,6 +171,7 @@ func (s *Service) DeleteSession(user, id string) error {
 }
 
 func (s *Service) GetSessionMessages(
+	user string,
 	id string,
 	offset int64,
 	limit int,
@@ -177,6 +179,17 @@ func (s *Service) GetSessionMessages(
 	sessionId, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, err
+	}
+
+	objs, err := s.store.FindSession(
+		bson.M{"_id": sessionId, "user": user},
+		options.Find().SetProjection(bson.M{"_id": 1}).SetLimit(1),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(objs) == 0 {
+		return nil, errors.New("session not found")
 	}
 
 	filter := bson.M{

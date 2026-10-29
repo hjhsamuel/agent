@@ -285,7 +285,9 @@ func (a *Api) GetChatMessages(c *gin.Context) {
 		return
 	}
 
-	objs, err := a.srv.GetSessionMessages(req.ID, req.Offset, req.Limit)
+	auth := common.GetAuth(c)
+
+	objs, err := a.srv.GetSessionMessages(strconv.Itoa(auth.ID), req.ID, req.Offset, req.Limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
