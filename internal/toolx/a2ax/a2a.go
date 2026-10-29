@@ -30,5 +30,8 @@ func NewA2A(path string) (agent.Agent, error) {
 				return nil, nil
 			},
 		},
+		MessageSendConfig: &a2a.SendMessageConfig{
+			ReturnImmediately: true,
+		},
 	})
 }
