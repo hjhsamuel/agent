@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/hjhsamuel/agent/internal/service/prompts"
 	"github.com/hjhsamuel/agent/internal/store/request"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -42,13 +43,13 @@ func (s *Service) addMainAgent(obj *schema.Agent) (bson.ObjectID, error) {
 	}
 
 	if info.Name == "" {
-		info.Name = schema.DefaultMainAgentName
+		info.Name = prompts.DefaultMainAgentName
 	}
 	if info.Description == "" {
-		info.Description = schema.DefaultMainAgentDescription
+		info.Description = prompts.DefaultMainAgentDescription
 	}
 	if info.Prompt == "" {
-		info.Prompt = schema.DefaultMainAgentPrompt
+		info.Prompt = prompts.DefaultMainAgentPrompt
 	}
 
 	return s.store.AddAgent(info)
