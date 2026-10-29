@@ -1,0 +1,1 @@
+{"name":"cagent-ui","private":true,"type":"module","scripts":{"dev":"node server.mjs","start":"node server.mjs","test":"node --test"},"engines":{"node":">=20"}}
