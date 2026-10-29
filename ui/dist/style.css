@@ -18,3 +18,5 @@
 .message-content pre{white-space:pre;overflow-wrap:normal}
 
 .message.user{max-width:70%;margin-left:auto}.markdown-preview pre,.markdown-preview pre code,.message-content pre{background:#f0f0f0}#messages{overflow-anchor:none}
+
+.message.assistant{position:relative;margin-bottom:46px}.thinking-indicator{position:absolute;bottom:-30px;left:0;display:flex;align-items:center;gap:8px;color:#64748b;font-size:13px;line-height:22px}.thinking-indicator::before{content:'';width:7px;height:7px;border-radius:50%;background:#78958a;animation:thinking-pulse 1.5s ease-in-out infinite}@keyframes thinking-pulse{50%{opacity:.3}}@media(prefers-reduced-motion:reduce){.thinking-indicator::before{animation:none}}

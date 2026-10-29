@@ -1,12 +1,29 @@
 import {renderMarkdown} from './markdown.js';
 const $ = id => document.getElementById(id);
 let current='', source, seq='', generation=0, busy=false, connected=false, answer, reasoning, sessionOffset='', historyOffset=0;
-let transcriptEpoch=0, stateTimer, pendingConnection;
+let transcriptEpoch=0, stateTimer, pendingConnection, thinkingIndicator;
 const historyLimit=3;
 let historyMore=false, historyLoading;
 const api='/cagent/v1/session';
 function notice(message=''){ $('notice').textContent=message; $('notice').hidden=!message; }
-function state(text){$('status').textContent=text; $('send').disabled=busy||(!!current&&!connected);}
+function state(text){
+  $('status').textContent=text; $('send').disabled=busy||(!!current&&!connected);
+  const running=busy&&['正在回复…','正在思考…'].includes(text);
+  if(thinkingIndicator)thinkingIndicator.hidden=!running;
+  if(running){
+    answer??=message('assistant');
+    if(!thinkingIndicator||thinkingIndicator.message!==answer){
+      if(thinkingIndicator)thinkingIndicator.hidden=true;
+      thinkingIndicator=document.createElement('div');
+      thinkingIndicator.className='thinking-indicator';
+      thinkingIndicator.textContent='思考中';
+      thinkingIndicator.setAttribute('role','status');
+      thinkingIndicator.message=answer;
+      answer.box.append(thinkingIndicator);
+    }
+    thinkingIndicator.hidden=false;
+  }
+}
 async function request(path='',method='GET',body){
   const response=await fetch(api+path,{method,credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
   const result=await response.json();
@@ -17,9 +34,10 @@ function message(role,content=''){
   $('messages').querySelector('.welcome')?.remove();
   const box=document.createElement('article');box.className='message '+(role==='user'?'user':'assistant');
   const name=document.createElement('strong');name.textContent=role==='user'?'你':'CAgent';
-  const text=document.createElement('div');text.className='markdown-preview message-content';text.markdown=content;text.innerHTML=renderMarkdown(content);box.append(name,text);$('messages').append(box);return text;
+  const text=document.createElement('div');text.className='markdown-preview message-content';text.markdown=content;text.innerHTML=renderMarkdown(content);text.box=box;box.append(name,text);$('messages').append(box);return text;
 }
-function scroll(){const el=$('messages');if(el.scrollHeight-el.scrollTop-el.clientHeight<220)el.scrollTop=el.scrollHeight;}
+function nearBottom(){const el=$('messages');return el.scrollHeight-el.scrollTop-el.clientHeight<220;}
+function scroll(follow){if(follow){const el=$('messages');el.scrollTop=el.scrollHeight;}}
 function scheduleStateCheck(version){
   clearTimeout(stateTimer);
   stateTimer=setTimeout(async()=>{
@@ -57,8 +75,8 @@ function subscribe(id,version,onReady){
     fn(event);
   });
   listen('init',event=>{current=event.data;connected=true;state(busy?'正在回复…':'已连接');$('delete').hidden=false;onReady?.();});
-  listen('content',event=>{busy=true;state('正在回复…');answer??=message('assistant');answer.markdown+=event.data;answer.innerHTML=renderMarkdown(answer.markdown);scroll();});
-  listen('reasoning',event=>{busy=true;state('正在思考…');answer??=message('assistant');if(!reasoning){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='思考过程';reasoning=document.createElement('div');reasoning.className='markdown-preview message-content';reasoning.markdown='';details.append(summary,reasoning);answer.before(details);}reasoning.markdown+=event.data;reasoning.innerHTML=renderMarkdown(reasoning.markdown);scroll();});
+  listen('content',event=>{const follow=nearBottom();busy=true;state('正在回复…');answer??=message('assistant');answer.markdown+=event.data;answer.innerHTML=renderMarkdown(answer.markdown);scroll(follow);});
+  listen('reasoning',event=>{const follow=nearBottom();busy=true;state('正在思考…');answer??=message('assistant');if(!reasoning){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='思考过程';reasoning=document.createElement('div');reasoning.className='markdown-preview message-content';reasoning.markdown='';details.append(summary,reasoning);answer.before(details);}reasoning.markdown+=event.data;reasoning.innerHTML=renderMarkdown(reasoning.markdown);scroll(follow);});
   listen('title',event=>{$('title').textContent=event.data;sessions().catch(error=>notice(error.message));});
   listen('hitl',event=>{try{input(JSON.parse(event.data),version);}catch{notice('无法解析补充输入请求。');}});
   listen('end',()=>{answer=reasoning=undefined;checkState(version).catch(error=>notice(error.message));});

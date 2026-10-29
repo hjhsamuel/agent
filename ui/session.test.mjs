@@ -57,3 +57,17 @@ test('history loads three at a time, starts at bottom and preserves position on 
  await vm.runInContext('loadOlder()',s.context);
  assert.equal(s.calls.length,count);
 });
+
+test('thinking indicator remains separate from streamed Markdown and hides on completion',async()=>{
+ const s=setup(1);await vm.runInContext("open('abc')",s.context);
+ const stream=s.streams[0];stream.handlers.init({data:'abc'});
+ assert.equal(vm.runInContext('thinkingIndicator.hidden',s.context),false);
+ stream.handlers.content({data:'**hello',lastEventId:'1'});
+ stream.handlers.content({data:' world**',lastEventId:'2'});
+ assert.equal(vm.runInContext('answer.markdown',s.context),'**hello world**');
+ assert.equal(vm.runInContext('answer.innerHTML',s.context),'<p><strong>hello world</strong></p>');
+ assert.equal(vm.runInContext('thinkingIndicator.textContent',s.context),'思考中');
+ assert.equal(vm.runInContext('thinkingIndicator.hidden',s.context),false);
+ s.setStatus(2);await vm.runInContext('checkState(generation)',s.context);
+ assert.equal(vm.runInContext('thinkingIndicator.hidden',s.context),true);
+});
