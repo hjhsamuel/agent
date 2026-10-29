@@ -304,7 +304,7 @@ func (s *Service) Run(user, id string, content string) error {
 		Content:   content,
 		CreatedAt: time.Now(),
 	}
-	state, turnId, err := s.store.AddMessage(message)
+	state, turnId, err := s.store.CreateNewTurn(message)
 	if err != nil {
 		s.finishLife(sessionId.Hex(), ctx)
 		return err
@@ -340,7 +340,10 @@ func (s *Service) newTurn(
 			if ctx.Err() != nil {
 				return
 			}
-			_ = s.store.UpdateSession(bson.M{"_id": sessionId}, bson.M{"$set": bson.M{"name": name}})
+			_ = s.store.UpdateSession(
+				bson.M{"_id": sessionId},
+				bson.M{"$set": bson.M{"name": name}},
+			)
 		}
 	}
 
@@ -357,7 +360,7 @@ func (s *Service) newTurn(
 	goto Success
 
 Error:
-	_, _, _ = s.store.AddMessage(&schema.Message{
+	_ = s.store.AddMessage(&schema.Message{
 		Session:   sessionId,
 		Turn:      turnId,
 		Role:      schema.RoleError,
@@ -365,7 +368,10 @@ Error:
 		CreatedAt: time.Now(),
 	})
 	_ = s.store.UpdateSession(
-		bson.M{"_id": sessionId, "state": bson.M{"$in": []schema.SessionStatus{schema.SessionRunning, schema.SessionInputReady}}},
+		bson.M{
+			"_id":   sessionId,
+			"state": bson.M{"$in": []schema.SessionStatus{schema.SessionRunning, schema.SessionInputReady}},
+		},
 		bson.M{"$set": bson.M{"state": schema.SessionDone, "wait": []*schema.WaitInput{}}},
 	)
 
@@ -499,7 +505,7 @@ func (s *Service) run(
 		}
 		// 添加展示信息
 		if content.Len() != 0 {
-			_, _, err := s.store.AddMessage(&schema.Message{
+			err = s.store.AddMessage(&schema.Message{
 				Session:   sessionId,
 				Turn:      turnId,
 				Role:      schema.RoleAssistant,
