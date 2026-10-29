@@ -11,11 +11,14 @@ import (
 
 var (
 	Version   = "dev"
+	CommitID  = ""
 	BuildTime = ""
 )
 
 func printVersion() {
-	fmt.Printf(`CAgent %s %s\n`, Version, BuildTime)
+	fmt.Printf(`CAgent %s 
+CommitID: %s
+BuildTime: %s\n`, Version, CommitID, BuildTime)
 }
 
 func main() {

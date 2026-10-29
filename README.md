@@ -28,6 +28,7 @@ The project provides backend APIs. The integrating application is responsible fo
 ├── pkg/                        # Shared filex, kms, llm, and skillx components
 ├── docs/                       # Swagger files and MongoDB session storage documentation
 ├── skills/                     # Optional local Skill content
+├── ui/                         # Optional chat and administration UI with a Node.js proxy
 ├── go.mod / go.sum             # Go version and dependencies
 └── LICENSE                     # Apache-2.0 license
 ```
@@ -121,7 +122,9 @@ go mod download
 ### Build
 
 ```bash
-go build -trimpath -ldflags "-w -s" -o ./release/cagent ./cmd ./release/cagent -v
+go build -trimpath -ldflags "-w -s" -o ./release/cagent ./cmd
+
+./release/cagent -v
 ```
 
 ### Start
@@ -140,6 +143,95 @@ go run ./cmd
 
 Open the [Swagger page](http://localhost:8080/cagent/swagger/index.html) to inspect the APIs. The service starts its
 shutdown sequence when it receives `SIGINT` or `SIGTERM`. Press `Ctrl+C` to stop a local process.
+
+### Docker
+
+Build the image from the project root (the following build command uses Bash):
+
+```bash
+docker build \
+  --build-arg VERSION=dev \
+  --build-arg COMMITID="$(git rev-parse --short HEAD)" \
+  -t cagent:local \
+  -f Dockerfile .
+
+docker run --rm cagent:local -v
+```
+
+`VERSION` defaults to `DEV`, and `COMMITID` defaults to `unknown`. The build injects the UTC
+compilation time into `main.BuildTime` in `YYYY-MM-DDTHH:MM:SSZ` format. Cached builds retain
+the previous compilation time; use `docker build --no-cache` when a fresh build is needed.
+The build copies the project subject to `.dockerignore` and downloads Go dependencies through
+`https://goproxy.cn,direct`.
+
+After configuring `.env` and initializing MongoDB, run:
+
+```bash
+docker run \
+  -d \
+  --name cagent \
+  -p 8080:8080 \
+  --env-file .env \
+  -v cagent-logs:/app/logs \
+  -v cagent-skills:/app/skills \
+  cagent:local
+```
+
+The container runs as the base image's default user with `/app` as its working directory.
+Use a MongoDB address reachable from the container; `127.0.0.1` refers to the container itself.
+The published port assumes the default `CAGENT_SERVER_PORT=8080`.
+
+`--env-file` supplies environment variables but does not mount the file. To persist keys written
+by the application, also bind-mount an existing writable `.env` file at `/app/.env`, for example
+with `--mount type=bind,source=/absolute/path/to/.env,target=/app/.env`.
+Local skills are excluded from the image; bind-mount a skill directory at `/app/skills` when needed.
+
+### UI
+
+The optional `ui` provides chat, streaming responses, session management, and administration
+for models, API keys, Agents, tools, and KMS key versions. It uses plain JavaScript and CSS
+with no third-party dependencies and requires Node.js 20 or later. No dependency installation
+or frontend build step is required.
+
+Start the configured backend and MongoDB first, then run from the project root:
+
+```shell
+cd ui
+npm start
+```
+
+Open [the UI](http://127.0.0.1:5001) in your browser. The UI server listens on `0.0.0.0`.
+Its port is configured by `port` in `ui/config.json` (default `5001`); restart the UI server
+after changing it. The `PORT` environment variable is not used.
+
+The UI server proxies `/cagent/v1/*` to `http://127.0.0.1:8080`, forwarding authentication
+cookies and SSE streams. To connect to another backend, set `CAGENT_API_URL` before starting
+the UI server. For example, in PowerShell:
+
+```powershell
+$env:CAGENT_API_URL = 'http://127.0.0.1:8080'
+npm start
+```
+
+Or in Bash:
+
+```bash
+CAGENT_API_URL=http://127.0.0.1:8080 npm start
+```
+
+In the UI's **连接与认证** panel, enter the cookie name configured by `CAGENT_SERVER_HEADER`
+and a JWT issued by your integrating application with the backend's required user claims
+and matching signing secret. CAgent does not provide a login or JWT issuance endpoint;
+the UI does not need the signing secret. This manual token entry is for development;
+production authentication should use an HttpOnly cookie set by the integrating login system.
+
+Before chatting, ensure a model, its API key, and a main Agent are configured and available.
+The administration panels use the same authentication cookie. Creating a KMS key version
+writes to the backend's `.env`, so that file must be writable and persisted when using this feature.
+
+The Docker image above contains only the backend. Run the UI separately; when the backend's
+port is published as `8080` on the same machine as the UI server, the default proxy address works.
+See [ui/README.md](ui/README.md) for more details on UI features and session behavior.
 
 ## MongoDB
 
