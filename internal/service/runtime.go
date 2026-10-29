@@ -11,6 +11,7 @@ import (
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"github.com/hjhsamuel/agent/internal/toolx"
+	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
@@ -335,6 +336,7 @@ func (s *Service) newTurn(
 		if msg != nil && len(msg.Parts) != 0 && msg.Parts[0].Text != "" {
 			name, err := s.ExtractSessionTopic(ctx, msg.Parts[0].Text)
 			if err != nil {
+				logrus.WithError(err).Error("extract session topic")
 				name = "新对话"
 			}
 			if ctx.Err() != nil {

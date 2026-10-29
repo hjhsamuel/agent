@@ -20,17 +20,23 @@ func (d *Store) RandomModel(ctx context.Context, kind schema.ModelKind, levels .
 				Key: "$elemMatch",
 				Value: bson.D{
 					{Key: "enable", Value: true},
+					{Key: "weight", Value: bson.M{"$gt": 0}},
 				},
 			},
 		}},
 	}
+	opts := options.FindOne()
 	if len(levels) != 0 {
 		filter = append(filter, bson.E{Key: "level", Value: bson.M{"$in": levels}})
+	} else {
+		// Select the lowest available intelligence level in a single query.
+		opts.SetSort(bson.D{{Key: "level", Value: 1}})
 	}
 
 	result := d.getCollection(schema.ModelCollection).FindOne(
 		ctx,
 		filter,
+		opts,
 	)
 
 	var model schema.Model

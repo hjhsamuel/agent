@@ -152,15 +152,11 @@ func (m *RingBufferManager) Push(producer *RingBufferProducer, chunk SSEChunk) (
 	if err := m.checkLease(lease); err != nil {
 		return 0, err
 	}
-	switch chunk.Type {
-	case SSEChunkTypeData, SSEChunkTypeReasoning, SSEChunkTypeHumanInTheLoop, SSEChunkTypeError:
-	case SSEChunkTypeEnd:
-		if len(chunk.Data) != 0 {
-			return 0, ErrRingBufferInvalidChunk
-		}
-	default:
+
+	if chunk.Type == SSEChunkTypeEnd && len(chunk.Data) != 0 {
 		return 0, ErrRingBufferInvalidChunk
 	}
+	
 	chunk.Data = strings.Clone(chunk.Data)
 	sequence, ok := lease.buffer.push(chunk, m.capacity)
 	if !ok {

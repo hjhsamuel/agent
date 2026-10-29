@@ -17,6 +17,11 @@ func (s *Service) selectModel(
 	kind schema.ModelKind,
 	levels ...schema.ModelLevel,
 ) (*schema.Model, error) {
+	if len(levels) == 0 {
+		// Prefer the least intelligent available model, even when a cached model exists.
+		return s.store.RandomModel(context.Background(), kind)
+	}
+
 	if last != nil && !last.ModelID.IsZero() && !last.UsedAt.IsZero() &&
 		time.Now().Sub(last.UsedAt) < schema.ModelCacheTTL {
 
@@ -30,7 +35,7 @@ func (s *Service) selectModel(
 		}
 		if err == nil {
 			for _, item := range m.ApiKeys {
-				if item.ID == last.APIKeyID && item.Enable {
+				if item != nil && item.ID == last.APIKeyID && item.Enable && item.Weight > 0 {
 					return &schema.Model{
 						ID:       m.ID,
 						Provider: m.Provider,

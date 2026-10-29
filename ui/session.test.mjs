@@ -71,3 +71,23 @@ test('thinking indicator remains separate from streamed Markdown and hides on co
  s.setStatus(2);await vm.runInContext('checkState(generation)',s.context);
  assert.equal(vm.runInContext('thinkingIndicator.hidden',s.context),true);
 });
+
+test('streamed title immediately adds session and survives list refresh',async()=>{
+ const s=setup(1);await vm.runInContext("open('abc')",s.context);
+ s.streams[0].handlers.title({data:'新标题',lastEventId:'1'});
+ assert.equal(vm.runInContext("$('title').textContent",s.context),'新标题');
+ assert.equal(vm.runInContext("$('sessions').children[0].textContent",s.context),'新标题');
+ await vm.runInContext('sessions()',s.context);
+ assert.equal(vm.runInContext("$('sessions').children.length",s.context),1);
+ assert.equal(vm.runInContext("$('sessions').children[0].className",s.context),'active');
+});
+
+test('selection follows session switches and clears for new conversation',async()=>{
+ const s=setup(2);
+ await vm.runInContext("sessionItems=[{id:'abc',name:'A'},{id:'def',name:'B'}];open('abc')",s.context);
+ assert.equal(vm.runInContext("$('sessions').children.map(x=>x.className).join(',')",s.context),'active,');
+ await vm.runInContext("open('def')",s.context);
+ assert.equal(vm.runInContext("$('sessions').children.map(x=>x.className).join(',')",s.context),',active');
+ await vm.runInContext('open()',s.context);
+ assert.equal(vm.runInContext("$('sessions').children.map(x=>x.className).join(',')",s.context),',');
+});

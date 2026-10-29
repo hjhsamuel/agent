@@ -3,6 +3,18 @@ const $ = id => document.getElementById(id);
 let current='', source, seq='', generation=0, busy=false, connected=false, answer, reasoning, sessionOffset='', historyOffset=0;
 let transcriptEpoch=0, stateTimer, pendingConnection, thinkingIndicator;
 const historyLimit=3;
+let sessionItems=[];
+const streamedTitles=new Map();
+function renderSessions(){
+  $('sessions').replaceChildren();
+  for(const item of sessionItems){
+    const button=document.createElement('button');
+    button.textContent=streamedTitles.get(item.id)??(item.name||'未命名对话');
+    button.className=item.id===current?'active':'';
+    button.onclick=()=>open(item.id,streamedTitles.get(item.id)??item.name,item.state);
+    $('sessions').append(button);
+  }
+}
 let historyMore=false, historyLoading;
 const api='/cagent/v1/session';
 function notice(message=''){ $('notice').textContent=message; $('notice').hidden=!message; }
@@ -62,8 +74,11 @@ async function checkState(version){
 }
 async function sessions(more=false){
   const data=await request('?limit=30'+(more?'&offset='+encodeURIComponent(sessionOffset):''));
-  if(!more)$('sessions').replaceChildren(); sessionOffset=data.offset;
-  for(const item of data.data){const button=document.createElement('button');button.textContent=item.name||'未命名对话';button.className=item.id===current?'active':'';button.onclick=()=>open(item.id,item.name,item.state);$('sessions').append(button);}
+  sessionOffset=data.offset;
+  const items=new Map((more?sessionItems:[]).map(item=>[item.id,item]));
+  for(const item of data.data)items.set(item.id,item);
+  for(const [id,name] of streamedTitles)if(!items.has(id))items.set(id,{id,name,state:1});
+  sessionItems=[...items.values()];renderSessions();
   $('more').hidden=data.data.length<30;
 }
 function subscribe(id,version,onReady){
@@ -77,7 +92,11 @@ function subscribe(id,version,onReady){
   listen('init',event=>{current=event.data;connected=true;state(busy?'正在回复…':'已连接');$('delete').hidden=false;onReady?.();});
   listen('content',event=>{const follow=nearBottom();busy=true;state('正在回复…');answer??=message('assistant');answer.markdown+=event.data;answer.innerHTML=renderMarkdown(answer.markdown);scroll(follow);});
   listen('reasoning',event=>{const follow=nearBottom();busy=true;state('正在思考…');answer??=message('assistant');if(!reasoning){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='思考过程';reasoning=document.createElement('div');reasoning.className='markdown-preview message-content';reasoning.markdown='';details.append(summary,reasoning);answer.before(details);}reasoning.markdown+=event.data;reasoning.innerHTML=renderMarkdown(reasoning.markdown);scroll(follow);});
-  listen('title',event=>{$('title').textContent=event.data;sessions().catch(error=>notice(error.message));});
+  listen('title',event=>{
+    $('title').textContent=event.data;streamedTitles.set(current,event.data);
+    if(!sessionItems.some(item=>item.id===current))sessionItems.unshift({id:current,name:event.data,state:1});
+    renderSessions();
+  });
   listen('hitl',event=>{try{input(JSON.parse(event.data),version);}catch{notice('无法解析补充输入请求。');}});
   listen('end',()=>{answer=reasoning=undefined;checkState(version).catch(error=>notice(error.message));});
   stream.addEventListener('error',event=>{
@@ -122,7 +141,8 @@ $('messages').addEventListener('wheel',event=>{if(event.deltaY<0&&$('messages').
 async function open(id='',title='新对话',status=2){
   pendingConnection?.(Error('已切换会话'));pendingConnection=undefined;
   const version=++generation;clearTimeout(stateTimer);transcriptEpoch++;source?.close();source=undefined;current=id;seq='';historyOffset=0;historyMore=false;historyLoading=undefined;busy=status===1||status===5;connected=false;answer=reasoning=undefined;
-  $('title').textContent=title||'未命名对话';$('messages').replaceChildren();$('inputs').replaceChildren();$('delete').hidden=!id;notice();state('正在加载…');
+  renderSessions();
+  $('title').textContent=streamedTitles.get(id)??(title||'未命名对话');$('messages').replaceChildren();$('inputs').replaceChildren();$('delete').hidden=!id;notice();state('正在加载…');
   try{
     if(id){const info=await request('/'+id);if(version!==generation)return;
       if(info.state===2){await history(id,version);if(version!==generation)return;busy=false;connected=true;state('已完成');return;}
@@ -145,7 +165,7 @@ $('composer').onsubmit=async event=>{
 };
 $('prompt').onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();$('composer').requestSubmit();}};
 $('new').onclick=()=>open();$('more').onclick=()=>sessions(true).catch(error=>notice(error.message));
-$('delete').onclick=async()=>{if(!current||!confirm('确定删除当前对话？'))return;try{await request('/'+current,'DELETE');await open();await sessions();}catch(error){notice(error.message);}};
+$('delete').onclick=async()=>{if(!current||!confirm('确定删除当前对话？'))return;try{await request('/'+current,'DELETE');streamedTitles.delete(current);await open();await sessions();}catch(error){notice(error.message);}};
 $('settings').onclick=()=>$('config').showModal();
 $('config').addEventListener('close',()=>{if($('config').returnValue!=='save')return;const token=$('token').value.trim();if(token){if(!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)){notice('JWT 格式无效。');return;}document.cookie=$('cookieName').value+'='+token+'; Path=/; SameSite=Strict';}$('token').value='';start();});
 async function start(){try{await sessions();await open();}catch(error){notice(error.message);state('尚未连接');}}

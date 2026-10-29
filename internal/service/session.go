@@ -110,7 +110,7 @@ func (s *Service) Stream(c *gin.Context, id string, seq uint64) error {
 }
 
 func (s *Service) ExtractSessionTopic(ctx context.Context, content string) (string, error) {
-	m, err := s.selectModel(nil, schema.ChatModel, schema.ModelLevelLow)
+	m, err := s.selectModel(nil, schema.ChatModel)
 	if err != nil {
 		return "", err
 	}
