@@ -56,7 +56,7 @@ function subscribe(id,version,onReady){
   });
   listen('init',event=>{current=event.data;connected=true;state(busy?'正在回复…':'已连接');$('delete').hidden=false;onReady?.();});
   listen('content',event=>{busy=true;state('正在回复…');answer??=message('assistant');answer.markdown+=event.data;answer.innerHTML=renderMarkdown(answer.markdown);scroll();});
-  listen('reasoning',event=>{busy=true;state('正在思考…');answer??=message('assistant');if(!reasoning){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='思考过程';reasoning=document.createElement('pre');details.append(summary,reasoning);answer.before(details);}reasoning.textContent+=event.data;scroll();});
+  listen('reasoning',event=>{busy=true;state('正在思考…');answer??=message('assistant');if(!reasoning){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='思考过程';reasoning=document.createElement('div');reasoning.className='markdown-preview message-content';reasoning.markdown='';details.append(summary,reasoning);answer.before(details);}reasoning.markdown+=event.data;reasoning.innerHTML=renderMarkdown(reasoning.markdown);scroll();});
   listen('title',event=>{$('title').textContent=event.data;sessions().catch(error=>notice(error.message));});
   listen('hitl',event=>{try{input(JSON.parse(event.data),version);}catch{notice('无法解析补充输入请求。');}});
   listen('end',()=>{answer=reasoning=undefined;checkState(version).catch(error=>notice(error.message));});
