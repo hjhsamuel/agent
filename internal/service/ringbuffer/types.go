@@ -36,6 +36,7 @@ type SSEChunkType string
 
 const (
 	SSEChunkTypeInit           SSEChunkType = "init"
+	SSEChunkTypeTitle          SSEChunkType = "title"
 	SSEChunkTypeData           SSEChunkType = "content"
 	SSEChunkTypeReasoning      SSEChunkType = "reasoning"
 	SSEChunkTypeEnd            SSEChunkType = "end"  // Ends a completed turn; Data must be empty.

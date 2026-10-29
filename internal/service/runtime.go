@@ -344,6 +344,10 @@ func (s *Service) newTurn(
 				bson.M{"_id": sessionId},
 				bson.M{"$set": bson.M{"name": name}},
 			)
+			_, _ = s.rbs.Push(producer, ringbuffer.SSEChunk{
+				Type: ringbuffer.SSEChunkTypeTitle,
+				Data: name,
+			})
 		}
 	}
 
