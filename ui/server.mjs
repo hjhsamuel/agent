@@ -26,4 +26,4 @@ http.createServer(async (req,res) => {
   if (!file) {res.writeHead(404);res.end();return;}
   try {res.writeHead(200,{'Content-Type':file[1]+'; charset=utf-8','Cache-Control':'no-store'});res.end(await readFile(new URL('./dist/'+file[0],import.meta.url)));}
   catch {res.end('文件读取失败');}
-}).listen(port,'127.0.0.1',()=>console.log('CAgent UI: http://127.0.0.1:'+port));
+}).listen(port,'0.0.0.0',()=>console.log('CAgent UI: http://127.0.0.1:'+port));

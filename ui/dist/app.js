@@ -1,9 +1,10 @@
+import {renderMarkdown} from './markdown.js';
 const $ = id => document.getElementById(id);
 let current='', source, seq='', generation=0, busy=false, connected=false, answer, reasoning, sessionOffset='', historyOffset=0;
-let transcriptEpoch=0, stateTimer;
+let transcriptEpoch=0, stateTimer, pendingConnection;
 const api='/cagent/v1/session';
 function notice(message=''){ $('notice').textContent=message; $('notice').hidden=!message; }
-function state(text){$('status').textContent=text; $('send').disabled=busy||!connected;}
+function state(text){$('status').textContent=text; $('send').disabled=busy||(!!current&&!connected);}
 async function request(path='',method='GET',body){
   const response=await fetch(api+path,{method,credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
   const result=await response.json();
@@ -14,7 +15,7 @@ function message(role,content=''){
   $('messages').querySelector('.welcome')?.remove();
   const box=document.createElement('article');box.className='message '+(role==='user'?'user':'assistant');
   const name=document.createElement('strong');name.textContent=role==='user'?'你':'CAgent';
-  const text=document.createElement('pre');text.textContent=content;box.append(name,text);$('messages').append(box);return text;
+  const text=document.createElement('div');text.className='markdown-preview message-content';text.markdown=content;text.innerHTML=renderMarkdown(content);box.append(name,text);$('messages').append(box);return text;
 }
 function scroll(){const el=$('messages');if(el.scrollHeight-el.scrollTop-el.clientHeight<220)el.scrollTop=el.scrollHeight;}
 function scheduleStateCheck(version){
@@ -45,7 +46,7 @@ async function sessions(more=false){
   for(const item of data.data){const button=document.createElement('button');button.textContent=item.name||'未命名对话';button.className=item.id===current?'active':'';button.onclick=()=>open(item.id,item.name,item.state);$('sessions').append(button);}
   $('more').hidden=data.data.length<30;
 }
-function subscribe(id,version){
+function subscribe(id,version,onReady){
   source?.close();connected=false;state('正在连接…');
   const stream=new EventSource(api+'/stream?'+new URLSearchParams({...(id?{id}:{}),seq}),{withCredentials:true});source=stream;
   const listen=(type,fn)=>stream.addEventListener(type,event=>{
@@ -53,14 +54,15 @@ function subscribe(id,version){
     if(event.lastEventId){if(seq && BigInt(event.lastEventId)<=BigInt(seq))return;seq=event.lastEventId;}
     fn(event);
   });
-  listen('init',event=>{current=event.data;connected=true;state(busy?'正在回复…':'已连接');$('delete').hidden=false;});
-  listen('content',event=>{busy=true;state('正在回复…');answer??=message('assistant');answer.textContent+=event.data;scroll();});
+  listen('init',event=>{current=event.data;connected=true;state(busy?'正在回复…':'已连接');$('delete').hidden=false;onReady?.();});
+  listen('content',event=>{busy=true;state('正在回复…');answer??=message('assistant');answer.markdown+=event.data;answer.innerHTML=renderMarkdown(answer.markdown);scroll();});
   listen('reasoning',event=>{busy=true;state('正在思考…');answer??=message('assistant');if(!reasoning){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='思考过程';reasoning=document.createElement('pre');details.append(summary,reasoning);answer.before(details);}reasoning.textContent+=event.data;scroll();});
   listen('title',event=>{$('title').textContent=event.data;sessions().catch(error=>notice(error.message));});
   listen('hitl',event=>{try{input(JSON.parse(event.data),version);}catch{notice('无法解析补充输入请求。');}});
   listen('end',()=>{answer=reasoning=undefined;checkState(version).catch(error=>notice(error.message));});
   stream.addEventListener('error',event=>{
     if(version!==generation)return;
+    if(pendingConnection){const reject=pendingConnection;pendingConnection=undefined;stream.close();source=undefined;reject(Error('连接失败，请检查认证和网络后重试。'));return;}
     if(typeof event.data==='string'){notice(event.data);busy=false;answer=reasoning=undefined;state('回复失败');return;}
     stream.close();connected=false;state('连接已断开');notice('连接已断开，3 秒后尝试恢复。认证失败时请更新 JWT。');
     if(current)setTimeout(()=>{if(version===generation)subscribe(current,version);},3000);
@@ -84,6 +86,7 @@ async function history(id,version,older=false){
   if(older)$('messages').append(...existing);
 }
 async function open(id='',title='新对话',status=2){
+  pendingConnection?.(Error('已切换会话'));pendingConnection=undefined;
   const version=++generation;clearTimeout(stateTimer);transcriptEpoch++;source?.close();source=undefined;current=id;seq='';busy=status===1||status===5;connected=false;answer=reasoning=undefined;
   $('title').textContent=title||'未命名对话';$('messages').replaceChildren();$('inputs').replaceChildren();$('delete').hidden=!id;notice();state('正在加载…');
   try{
@@ -91,14 +94,17 @@ async function open(id='',title='新对话',status=2){
       if(info.state===2){await history(id,version);if(version!==generation)return;busy=false;connected=true;state('已完成');return;}
       busy=true;const pending=await request('/'+id+'/input');if(version!==generation)return;pending.forEach(item=>input(item,version));
     }
-    subscribe(id,version);if(id)scheduleStateCheck(version);
+    if(!id){busy=false;state('请输入消息开始新对话');return;}
+    subscribe(id,version);scheduleStateCheck(version);
   }catch(error){if(version===generation){notice(error.message);state('加载失败');}}
 }
 $('composer').onsubmit=async event=>{
-  event.preventDefault();const content=$('prompt').value.trim();if(!content||busy||!connected)return;
+  event.preventDefault();const content=$('prompt').value.trim();if(!content||busy||(!!current&&!connected))return;
   const version=generation;transcriptEpoch++;busy=true;answer=reasoning=undefined;state('正在发送…');notice();
   const sent=message('user',content);$('prompt').value='';$('messages').scrollTop=$('messages').scrollHeight;
-  try{await request('/'+current+'/message','POST',{content});if(version!==generation)return;
+  try{
+    if(!current){await new Promise((resolve,reject)=>{pendingConnection=reject;subscribe('',version,()=>{pendingConnection=undefined;resolve();});});if(version!==generation)return;}
+    await request('/'+current+'/message','POST',{content});if(version!==generation)return;
     if(!source){$('messages').replaceChildren();message('user',content);seq='';subscribe(current,version);}
     state('正在回复…');scheduleStateCheck(version);}
   catch(error){if(version===generation){sent.parentElement.remove();$('prompt').value=content;busy=false;state('发送失败');notice(error.message);}}
