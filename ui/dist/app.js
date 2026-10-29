@@ -1,7 +1,7 @@
 import {renderMarkdown} from './markdown.js';
 const $ = id => document.getElementById(id);
 let current='', source, seq='', generation=0, busy=false, connected=false, answer, reasoning, sessionOffset='', historyOffset=0;
-let transcriptEpoch=0, stateTimer, pendingConnection, thinkingIndicator;
+let transcriptEpoch=0, pendingConnection, thinkingIndicator;
 const historyLimit=3;
 let sessionItems=[];
 const streamedTitles=new Map();
@@ -50,20 +50,12 @@ function message(role,content=''){
 }
 function nearBottom(){const el=$('messages');return el.scrollHeight-el.scrollTop-el.clientHeight<220;}
 function scroll(follow){if(follow){const el=$('messages');el.scrollTop=el.scrollHeight;}}
-function scheduleStateCheck(version){
-  clearTimeout(stateTimer);
-  stateTimer=setTimeout(async()=>{
-    if(version!==generation)return;
-    try{await checkState(version);}catch(error){notice(error.message);}
-    if(version===generation&&source)scheduleStateCheck(version);
-  },3000);
-}
 async function checkState(version){
   const id=current, epoch=transcriptEpoch;
   const info=await request('/'+id);
   if(version!==generation||epoch!==transcriptEpoch)return;
   if(info.state!==2)return;
-  source?.close();source=undefined;clearTimeout(stateTimer);
+  source?.close();source=undefined;
   // Invalidate callbacks already queued by the closed EventSource.
   const nextVersion=++generation;
   busy=true;connected=false;state('正在加载最近消息…');
@@ -89,7 +81,10 @@ function subscribe(id,version,onReady){
     if(event.lastEventId){if(seq && BigInt(event.lastEventId)<=BigInt(seq))return;seq=event.lastEventId;}
     fn(event);
   });
-  listen('init',event=>{current=event.data;connected=true;state(busy?'正在回复…':'已连接');$('delete').hidden=false;onReady?.();});
+  listen('init',event=>{
+    current=event.data;connected=true;state(busy?'正在回复…':'已连接');$('delete').hidden=false;onReady?.();
+    if(id)checkState(version).catch(error=>{if(version===generation)notice(error.message);});
+  });
   listen('content',event=>{const follow=nearBottom();busy=true;state('正在回复…');answer??=message('assistant');answer.markdown+=event.data;answer.innerHTML=renderMarkdown(answer.markdown);scroll(follow);});
   listen('reasoning',event=>{const follow=nearBottom();busy=true;state('正在思考…');answer??=message('assistant');if(!reasoning){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='思考过程';reasoning=document.createElement('div');reasoning.className='markdown-preview message-content';reasoning.markdown='';details.append(summary,reasoning);answer.before(details);}reasoning.markdown+=event.data;reasoning.innerHTML=renderMarkdown(reasoning.markdown);scroll(follow);});
   listen('title',event=>{
@@ -140,7 +135,7 @@ $('messages').addEventListener('scroll',()=>{if($('messages').scrollTop<=0)loadO
 $('messages').addEventListener('wheel',event=>{if(event.deltaY<0&&$('messages').scrollTop<=0)loadOlder();},{passive:true});
 async function open(id='',title='新对话',status=2){
   pendingConnection?.(Error('已切换会话'));pendingConnection=undefined;
-  const version=++generation;clearTimeout(stateTimer);transcriptEpoch++;source?.close();source=undefined;current=id;seq='';historyOffset=0;historyMore=false;historyLoading=undefined;busy=status===1||status===5;connected=false;answer=reasoning=undefined;
+  const version=++generation;transcriptEpoch++;source?.close();source=undefined;current=id;seq='';historyOffset=0;historyMore=false;historyLoading=undefined;busy=status===1||status===5;connected=false;answer=reasoning=undefined;
   renderSessions();
   $('title').textContent=streamedTitles.get(id)??(title||'未命名对话');$('messages').replaceChildren();$('inputs').replaceChildren();$('delete').hidden=!id;notice();state('正在加载…');
   try{
@@ -149,7 +144,7 @@ async function open(id='',title='新对话',status=2){
       busy=true;const pending=await request('/'+id+'/input');if(version!==generation)return;pending.forEach(item=>input(item,version));
     }
     if(!id){busy=false;state('请输入消息开始新对话');return;}
-    subscribe(id,version);scheduleStateCheck(version);
+    subscribe(id,version);
   }catch(error){if(version===generation){notice(error.message);state('加载失败');}}
 }
 $('composer').onsubmit=async event=>{
@@ -160,7 +155,7 @@ $('composer').onsubmit=async event=>{
     if(!current){await new Promise((resolve,reject)=>{pendingConnection=reject;subscribe('',version,()=>{pendingConnection=undefined;resolve();});});if(version!==generation)return;}
     await request('/'+current+'/message','POST',{content});if(version!==generation)return;
     if(!source){$('messages').replaceChildren();message('user',content);seq='';subscribe(current,version);}
-    state('正在回复…');scheduleStateCheck(version);}
+    state('正在回复…');}
   catch(error){if(version===generation){sent.parentElement.remove();$('prompt').value=content;busy=false;state('发送失败');notice(error.message);}}
 };
 $('prompt').onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();$('composer').requestSubmit();}};

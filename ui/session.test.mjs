@@ -5,9 +5,9 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 const code=(await readFile(new URL('./dist/app.js',import.meta.url),'utf8')).replace("import './admin.js';",'').replace("import {renderMarkdown} from './markdown.js';",'').replace(/\nstart\(\);/,'');
 function setup(status,pages){
- const calls=[],streams=[],elements=new Map();
+ const calls=[],streams=[],timers=[],elements=new Map();
  const element=()=>({children:[],scrollTop:0,get scrollHeight(){return this.children.length*100;},textContent:'',value:'',append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},querySelector(){return null;},addEventListener(){},setAttribute(){}});
- const context=vm.createContext({renderMarkdown,document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element},URLSearchParams,BigInt,setTimeout:()=>1,clearTimeout(){},fetch:async url=>{
+ const context=vm.createContext({renderMarkdown,document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element},URLSearchParams,BigInt,setTimeout:(fn,delay)=>{timers.push({fn,delay});return 1;},clearTimeout(){},fetch:async url=>{
   calls.push(url);let data;
   if(url.endsWith('/abc'))data={state:status};
   else if(url.includes('/message?'))data=pages?pages.shift():{data:[{role:'assistant',content:'saved answer'}],offset:1};
@@ -15,7 +15,7 @@ function setup(status,pages){
   else data={data:[],offset:''};
   return {ok:true,json:async()=>({code:200,data})};
  },EventSource:class{constructor(url){this.url=url;this.handlers={};streams.push(this);}addEventListener(name,fn){this.handlers[name]=fn;}close(){this.closed=true;}}});
- vm.runInContext(code,context);return {calls,streams,context,setStatus(value){status=value;}};
+ vm.runInContext(code,context);return {calls,streams,timers,context,setStatus(value){status=value;}};
 }
 test('completed session uses history without opening SSE',async()=>{
  const s=setup(2);await vm.runInContext("open('abc','test',1)",s.context);
@@ -90,4 +90,26 @@ test('selection follows session switches and clears for new conversation',async(
  assert.equal(vm.runInContext("$('sessions').children.map(x=>x.className).join(',')",s.context),',active');
  await vm.runInContext('open()',s.context);
  assert.equal(vm.runInContext("$('sessions').children.map(x=>x.className).join(',')",s.context),',');
+});
+
+test('SSE end drives completion without a polling timer and ignores old ends',async()=>{
+ const s=setup(1);await vm.runInContext("open('abc')",s.context);
+ assert.equal(s.timers.length,0);
+ s.streams[0].handlers.end({data:'',lastEventId:'1'});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.ok(!s.streams[0].closed);
+ s.setStatus(2);
+ s.streams[0].handlers.end({data:'',lastEventId:'2'});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(s.streams[0].closed,true);
+ assert.equal(vm.runInContext("$('status').textContent",s.context),'已完成');
+ assert.equal(s.timers.length,0);
+});
+
+test('existing session init reconciles completion when end was missed',async()=>{
+ const s=setup(1);await vm.runInContext("open('abc')",s.context);
+ s.setStatus(2);s.streams[0].handlers.init({data:'abc'});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(s.streams[0].closed,true);
+ assert.equal(s.timers.length,0);
 });
