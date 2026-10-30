@@ -35,8 +35,9 @@ type Response struct {
 }
 
 type Auth struct {
-	ID   int
-	Name string
+	ID    int
+	Name  string
+	Token string
 	jwt.RegisteredClaims
 }
 

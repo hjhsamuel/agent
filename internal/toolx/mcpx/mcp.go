@@ -7,11 +7,11 @@ import (
 	"google.golang.org/adk/v2/tool/mcptoolset"
 )
 
-func NewMCP(user string, path string) (tool.Toolset, error) {
+func NewMCP(path string, cred auth.CredentialProvider) (tool.Toolset, error) {
 	return mcptoolset.New(mcptoolset.Config{
 		Transport: &mcp.StreamableClientTransport{
 			Endpoint: path,
 		},
-		Auth: auth.APIKey("X-User-ID", user),
+		Auth: cred,
 	})
 }

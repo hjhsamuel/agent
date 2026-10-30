@@ -8,10 +8,10 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2aclient/agentcard"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/remoteagent/v2"
-	"google.golang.org/adk/v2/session"
+	"google.golang.org/adk/v2/auth"
 )
 
-func NewA2A(path string) (agent.Agent, error) {
+func NewA2A(path string, cred auth.CredentialProvider) (agent.Agent, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 
@@ -24,12 +24,7 @@ func NewA2A(path string) (agent.Agent, error) {
 		Name:        card.Name,
 		Description: card.Description,
 		AgentCard:   card,
-		BeforeRequestCallbacks: []remoteagent.BeforeA2ARequestCallback{
-			func(ctx agent.Context, req *a2a.SendMessageRequest) (*session.Event, error) {
-				req.Message.SetMeta("User", ctx.UserID())
-				return nil, nil
-			},
-		},
+		Auth:        cred,
 		MessageSendConfig: &a2a.SendMessageConfig{
 			ReturnImmediately: true,
 		},

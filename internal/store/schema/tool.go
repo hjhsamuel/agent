@@ -9,15 +9,16 @@ import (
 const ToolCollection = "cagent_tool"
 
 type Tool struct {
-	ID        bson.ObjectID  `bson:"_id,omitempty"`
-	Name      string         `bson:"name"` // 工具名称
-	Url       string         `bson:"url"`  // local/skill：压缩包下载地址；a2a/mcp：远端服务地址
-	Type      ToolType       `bson:"type"`
-	Hash      *HashInfo      `bson:"hash"` // 仅用于本地工具校验
-	State     ToolStatus     `bson:"state"`
-	Agent     *bson.ObjectID `bson:"agent,omitempty"`
-	CreatedAt time.Time      `bson:"created_at"`
-	Creator   string         `bson:"creator"`
+	ID         bson.ObjectID  `bson:"_id,omitempty"`
+	Name       string         `bson:"name"` // 工具名称
+	Url        string         `bson:"url"`  // local/skill：压缩包下载地址；a2a/mcp：远端服务地址
+	Type       ToolType       `bson:"type"`
+	Credential *Credential    `bson:"credential"` // 认证信息
+	Hash       *HashInfo      `bson:"hash"`       // 仅用于本地工具校验
+	State      ToolStatus     `bson:"state"`
+	Agent      *bson.ObjectID `bson:"agent,omitempty"`
+	CreatedAt  time.Time      `bson:"created_at"`
+	Creator    string         `bson:"creator"`
 }
 
 type ToolType int
@@ -27,6 +28,20 @@ const (
 	ToolA2A                   // a2a
 	ToolMcp                   // mcp
 	ToolSkill                 // skill
+)
+
+type Credential struct {
+	Type  CredentialType `bson:"type"`
+	Key   string         `bson:"key"`
+	Value string         `bson:"value"`
+}
+
+type CredentialType int
+
+const (
+	CredentialHeaderApi CredentialType = iota // header-based API key, like 'X-Api-Key'
+	CredentialDstBearer                       // the specific bearer token
+	CredentialSvcBearer                       // the bearer token using of cagent server
 )
 
 type HashInfo struct {

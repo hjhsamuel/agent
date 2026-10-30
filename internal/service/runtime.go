@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
+	"google.golang.org/adk/v2/auth"
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/adk/v2/plugin"
 	"google.golang.org/adk/v2/runner"
@@ -129,12 +130,14 @@ func (s *Service) buildAgent(
 		skill tool.Toolset
 	)
 	if v, ok := agentTool[cfg.ID]; ok {
+		// TODO
+		// 暂时使用 header api 方式，后续支持多种认证模式
 		for kind, paths := range v {
 			switch kind {
 			case schema.ToolMcp:
-				mcps = toolx.GetMcp(user, paths...)
+				mcps = toolx.GetMcp(auth.APIKey("X-User_ID", user), paths...)
 			case schema.ToolA2A:
-				a2as = toolx.GetA2A(paths...)
+				a2as = toolx.GetA2A(auth.APIKey("X-User_ID", user), paths...)
 			case schema.ToolSkill:
 				skill = toolx.GetSkills(paths...)
 			default:

@@ -7,14 +7,15 @@ import (
 	"github.com/hjhsamuel/agent/internal/toolx/mcpx"
 	"github.com/hjhsamuel/agent/internal/toolx/skillx"
 	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/auth"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/skilltoolset"
 )
 
-func GetMcp(user string, paths ...string) []tool.Toolset {
+func GetMcp(cred auth.CredentialProvider, paths ...string) []tool.Toolset {
 	out := make([]tool.Toolset, 0)
 	for _, path := range paths {
-		ts, err := mcpx.NewMCP(user, path)
+		ts, err := mcpx.NewMCP(path, cred)
 		if err != nil {
 			continue
 		}
@@ -23,10 +24,10 @@ func GetMcp(user string, paths ...string) []tool.Toolset {
 	return out
 }
 
-func GetA2A(paths ...string) []agent.Agent {
+func GetA2A(cred auth.CredentialProvider, paths ...string) []agent.Agent {
 	out := make([]agent.Agent, 0)
 	for _, path := range paths {
-		agt, err := a2ax.NewA2A(path)
+		agt, err := a2ax.NewA2A(path, cred)
 		if err != nil {
 			continue
 		}

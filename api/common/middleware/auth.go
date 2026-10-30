@@ -31,6 +31,8 @@ func AuthMiddleware(ctx *gin.Context) {
 		return
 	}
 
+	claim.Token = content
+
 	ctx.Set(common.AuthKey, claim)
 	ctx.Next()
 }
