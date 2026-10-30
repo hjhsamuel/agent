@@ -24,4 +24,4 @@ COPY --from=builder /out/cagent cagent
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/cagent"]
+ENTRYPOINT ["./cagent"]
