@@ -13,7 +13,14 @@ try {
   process.exit(1);
 }
 const target = new URL(process.env.CAGENT_API_URL || 'http://127.0.0.1:8080');
-const files = {'/':['index.html','text/html'], '/app.js':['app.js','text/javascript'], '/admin.js':['admin.js','text/javascript'], '/markdown.js':['markdown.js','text/javascript'], '/style.css':['style.css','text/css']};
+const files = {
+    '/':['index.html','text/html'],
+    '/app.js':['app.js','text/javascript'],
+    '/admin.js':['admin.js','text/javascript'],
+    '/markdown.js':['markdown.js','text/javascript'],
+    '/style.css':['style.css','text/css'],
+    '/tool-form.js':['tool-form.js', 'text/javascript'],
+};
 http.createServer(async (req,res) => {
   if (req.url.startsWith('/cagent/v1/')) {
     const upstream = (target.protocol === 'https:' ? https : http).request(new URL(req.url,target), {method:req.method, headers:{...req.headers, host:target.host}}, response => {
