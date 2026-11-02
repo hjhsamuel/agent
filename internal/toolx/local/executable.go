@@ -5,16 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/hjhsamuel/agent/pkg/filex"
-	"google.golang.org/adk/v2/agent"
-	"google.golang.org/adk/v2/model"
-	"google.golang.org/genai"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
+
+	"github.com/hjhsamuel/agent/pkg/filex"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/model"
+	"google.golang.org/genai"
 )
 
 var validName = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]{0,63}$`)
@@ -38,6 +39,7 @@ func Load(dir, name string) (*Executable, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("local tool has no installed version")
 	}
+
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
@@ -46,6 +48,7 @@ func Load(dir, name string) (*Executable, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	t := &Executable{dir: dir, binary: name}
 	if runtime.GOOS == "windows" {
 		t.binary += ".exe"
@@ -65,16 +68,31 @@ func Load(dir, name string) (*Executable, error) {
 	}
 	return t, nil
 }
-func (t *Executable) Name() string                            { return t.declaration.Name }
-func (t *Executable) Description() string                     { return t.declaration.Description }
-func (t *Executable) IsLongRunning() bool                     { return false }
-func (t *Executable) Declaration() *genai.FunctionDeclaration { return &t.declaration }
+
+func (t *Executable) Name() string {
+	return t.declaration.Name
+}
+
+func (t *Executable) Description() string {
+	return t.declaration.Description
+}
+
+func (t *Executable) IsLongRunning() bool {
+	return false
+}
+
+func (t *Executable) Declaration() *genai.FunctionDeclaration {
+	return &t.declaration
+}
+
 func (t *Executable) ProcessRequest(ctx agent.Context, req *model.LLMRequest) error {
 	return PackTool(req, t)
 }
+
 func (t *Executable) Run(ctx agent.Context, args any) (map[string]any, error) {
 	return t.run(ctx, args)
 }
+
 func (t *Executable) run(ctx context.Context, args any) (map[string]any, error) {
 	data, err := json.Marshal(args)
 	if err != nil {
@@ -112,20 +130,24 @@ func Install(ctx context.Context, name, url string, version int64) (string, erro
 	if version <= 0 {
 		return "", fmt.Errorf("invalid tool version %d", version)
 	}
+
 	destination := VersionDir(name, version)
 	root := filepath.Join("tools", name)
 	if err := os.MkdirAll(root, 0755); err != nil {
 		return "", err
 	}
+
 	stage, err := os.MkdirTemp(root, ".staging-")
 	if err != nil {
 		return "", err
 	}
 	defer os.RemoveAll(stage)
+
 	archive, err := filex.Download(ctx, url, filepath.Join(stage, "download"))
 	if err != nil {
 		return "", err
 	}
+
 	dir := filepath.Join(stage, "payload")
 	if err = filex.Extract(ctx, archive, dir); err != nil {
 		return "", err
@@ -137,6 +159,7 @@ func Install(ctx context.Context, name, url string, version int64) (string, erro
 	if len(entries) == 1 && entries[0].IsDir() {
 		dir = filepath.Join(dir, entries[0].Name())
 	}
+
 	if _, err = Load(dir, name); err != nil {
 		return "", err
 	}
