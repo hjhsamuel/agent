@@ -160,7 +160,7 @@ func (s *Service) buildAgent(
 			case schema.ToolSkill:
 				paths := make([]string, 0, len(vs))
 				for _, item := range vs {
-					paths = append(paths, item.Name)
+					paths = append(paths, item.Name+"/"+strconv.FormatInt(item.Version, 10))
 				}
 				skill = toolx.GetSkills(paths...)
 			default:

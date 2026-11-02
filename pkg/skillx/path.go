@@ -6,15 +6,29 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 // openSkillRoot constrains both the skill name and any symlinks to skills/.
 func openSkillRoot(name string) (*os.Root, error) {
-	if name == "." || !fs.ValidPath(name) || !filepath.IsLocal(name) || strings.ContainsAny(name, `/\:`) {
+	if name == "." || !fs.ValidPath(name) || !filepath.IsLocal(name) || strings.ContainsAny(name, `\:`) {
 		return nil, fmt.Errorf("invalid skill name: %q", name)
 	}
 
+	parts := strings.Split(name, "/")
+	if len(parts) > 2 {
+		return nil, fmt.Errorf("invalid skill path: %q", name)
+	}
+	if len(parts) == 2 {
+		if err := ValidateName(parts[0]); err != nil {
+			return nil, err
+		}
+		version, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || version <= 0 || strconv.FormatInt(version, 10) != parts[1] {
+			return nil, fmt.Errorf("invalid skill version: %q", name)
+		}
+	}
 	root, err := os.OpenRoot("skills")
 	if err != nil {
 		return nil, err

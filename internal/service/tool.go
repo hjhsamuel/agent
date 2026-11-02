@@ -3,16 +3,12 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/hjhsamuel/agent/internal/toolx/local"
 
 	"github.com/hjhsamuel/agent/internal/store/request"
 	"github.com/hjhsamuel/agent/internal/store/schema"
-	"github.com/hjhsamuel/agent/pkg/filex"
 	"github.com/hjhsamuel/agent/pkg/skillx"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -29,6 +25,11 @@ func (s *Service) AddTool(
 ) (string, error) {
 	if schema.ToolType(kind) == schema.ToolLocal {
 		if err := local.ValidateName(name); err != nil {
+			return "", err
+		}
+	}
+	if schema.ToolType(kind) == schema.ToolSkill {
+		if err := skillx.ValidateName(name); err != nil {
 			return "", err
 		}
 	}
@@ -101,17 +102,10 @@ func (s *Service) AddTool(
 func (s *Service) asyncToolLoader(obj *schema.Tool) {
 	var state schema.ToolStatus
 	switch obj.Type {
-	case schema.ToolSkill:
-		err := s.downloadAndExtractTool(obj.Type, obj.Url, obj.Name)
-		if err != nil {
-			state = schema.ToolStatusOffline
-		} else {
-			state = schema.ToolStatusOnline
-		}
-	case schema.ToolLocal:
+	case schema.ToolLocal, schema.ToolSkill:
 		version, err := s.store.NextToolVersion(obj.Name)
 		if err == nil {
-			_, err = local.Install(context.Background(), obj.Name, obj.Url, version)
+			err = installToolVersion(obj.Type, obj.Name, obj.Url, version)
 		}
 		if err != nil {
 			state = schema.ToolStatusOffline
@@ -133,60 +127,14 @@ func (s *Service) asyncToolLoader(obj *schema.Tool) {
 	)
 }
 
-func (s *Service) downloadAndExtractTool(kind schema.ToolType, baseUrl string, toolName string) error {
-	if kind != schema.ToolSkill {
-		return errors.New("unknown tool kind")
+func installToolVersion(kind schema.ToolType, name, url string, version int64) error {
+	var err error
+	if kind == schema.ToolSkill {
+		_, err = skillx.Install(context.Background(), name, url, version)
+	} else {
+		_, err = local.Install(context.Background(), name, url, version)
 	}
-
-	if err := skillx.ValidateName(toolName); err != nil {
-		return err
-	}
-
-	destination := filepath.Join("skills", toolName)
-	if info, err := os.Lstat(destination); err == nil {
-		if !info.IsDir() {
-			return fmt.Errorf("skill %q must be a directory", toolName)
-		}
-		// Reuse installed files so re-enabling a skill does not disturb running runners.
-		return skillx.ValidateSkill(destination, toolName)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("check skill destination: %w", err)
-	}
-
-	// Keep staging on the same filesystem so installation can use rename.
-	tempDir, err := os.MkdirTemp("skills", ".tool-*")
-	if err != nil {
-		return fmt.Errorf("create temporary skill directory: %w", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	tempDownloadDir := filepath.Join(tempDir, "downloads")
-	tempExtractDir := filepath.Join(tempDir, "extracts")
-	dp, err := filex.Download(context.Background(), baseUrl, tempDownloadDir)
-	if err != nil {
-		return fmt.Errorf("download skill: %w", err)
-	}
-	if err := filex.Extract(context.Background(), dp, tempExtractDir); err != nil {
-		return fmt.Errorf("extract skill: %w", err)
-	}
-
-	entries, err := os.ReadDir(tempExtractDir)
-	if err != nil {
-		return fmt.Errorf("read extracted skill directory: %w", err)
-	}
-	// Accept both a flat archive and an archive with one enclosing directory.
-	skillDir := tempExtractDir
-	if len(entries) == 1 && entries[0].IsDir() {
-		skillDir = filepath.Join(tempExtractDir, entries[0].Name())
-	}
-	if err := skillx.ValidateSkill(skillDir, toolName); err != nil {
-		return fmt.Errorf("validate skill: %w", err)
-	}
-
-	if err := os.Rename(skillDir, destination); err != nil {
-		return fmt.Errorf("install skill %q: %w", toolName, err)
-	}
-	return nil
+	return err
 }
 
 func (s *Service) GetTools(req *request.GetToolsReq) ([]*schema.Tool, error) {
@@ -361,27 +309,14 @@ func (s *Service) UpdateToolInfo(id string, req *request.UpdateToolReq) error {
 			update["url"] = *req.Url
 		}
 		return s.store.UpdateTool(bson.M{"_id": toolId}, bson.M{"$set": update})
-	case schema.ToolSkill:
-		if req.Url != nil {
-			// 更新地址，表示需要重新拉取
-			// TODO
-			// 暂不支持
-			return errors.New("not supported")
-		} else {
-			// 更新基础信息，或修改关联
-			if req.Name != nil {
-				update["name"] = *req.Name
-			}
-			return s.store.UpdateTool(bson.M{"_id": toolId}, bson.M{"$set": update})
-		}
-	case schema.ToolLocal:
+	case schema.ToolLocal, schema.ToolSkill:
 		if req.Name != nil && *req.Name != toolObj.Name {
-			return errors.New("local tool name is immutable")
+			return errors.New("tool name is immutable")
 		}
 		if req.Url != nil {
 			version, err := s.store.NextToolVersion(toolObj.Name)
 			if err == nil {
-				_, err = local.Install(context.Background(), toolObj.Name, *req.Url, version)
+				err = installToolVersion(toolObj.Type, toolObj.Name, *req.Url, version)
 			}
 			if err != nil {
 				return err

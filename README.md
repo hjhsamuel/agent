@@ -164,11 +164,11 @@ Creation downloads asynchronously; wait for `state: 1` before use. Updating the 
 
 ## MongoDB
 
-Run in `mongosh` with the target database selected:
+An administrator must create collections and indexes before starting the service. The service only performs data operations; it does not manage database indexes or collections. Run the following in `mongosh` with the target database selected (resolve any existing duplicate local tool names before creating the unique index):
 
 ```javascript
 const collections = [
-    "cagent_agent", "cagent_model", "cagent_tool", "cagent_session", "cagent_message",
+    "cagent_agent", "cagent_model", "cagent_tool", "cagent_tool_version", "cagent_session", "cagent_message",
     "cagent_adk_session", "cagent_adk_event", "cagent_adk_app_state", "cagent_adk_user_state"
 ];
 const existing = new Set(db.getCollectionNames());
@@ -177,6 +177,10 @@ for (const name of collections) {
 }
 
 // Required unique indexes and event history index.
+db.cagent_tool.createIndex({name: 1},
+    {unique: true, name: "unique_local_tool_name", partialFilterExpression: {type: 0}});
+db.cagent_tool.createIndex({name: 1},
+    {unique: true, name: "unique_skill_name", partialFilterExpression: {type: 3}});
 db.cagent_adk_session.createIndex({app_name: 1, user_id: 1, session_id: 1},
     {unique: true, name: "uq_adk_session_identity"});
 db.cagent_adk_event.createIndex({session: 1, event_id: 1},
@@ -197,3 +201,7 @@ db.cagent_message.createIndex({session: 1, _id: -1}, {name: "ix_message_session_
 db.cagent_model.createIndex({type: 1, enable: 1}, {name: "ix_model_type_enable"});
 db.cagent_tool.createIndex({enable: 1}, {name: "ix_tool_enable"});
 ```
+
+### Skill updates
+
+Skills (`kind: 3`) use the same versioned update flow as local tools. Updating the URL downloads and validates a new archive before publishing its Version under `skills/<Name>/<Version>`. Names are immutable. Existing runners retain their instructions and resources from the pinned version; failed updates leave the published version unchanged. Startup cleans unused versions before runner recovery. Legacy unversioned skills are downloaded into versioned directories on startup, so their URLs must remain reachable. Each instance must own its skills directory exclusively. Administrators must create the `unique_skill_name` index above before use.

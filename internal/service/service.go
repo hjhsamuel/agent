@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 
@@ -59,39 +58,31 @@ func (s *Service) initSkill() error {
 
 // syncSkills runs before runners start. Offline skills remain installed too.
 func (s *Service) syncSkills(tools []*schema.Tool) error {
-	wanted := make(map[string]bool, len(tools))
+	versions := make(map[string]int64, len(tools))
 	for _, item := range tools {
 		if err := skillx.ValidateName(item.Name); err != nil {
-			return fmt.Errorf("sync skill %q: %w", item.Name, err)
+			return err
 		}
-		wanted[item.Name] = true
-	}
-
-	_ = os.MkdirAll("skills", os.ModePerm)
-
-	// Finish downloads before deleting anything, so a failed download preserves local skills.
-	for _, item := range tools {
-		_ = s.downloadAndExtractTool(item.Type, item.Url, item.Name)
-	}
-
-	root, err := os.OpenRoot("skills")
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-
-	entries, err := os.ReadDir("skills")
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if wanted[entry.Name()] || (!entry.IsDir() && entry.Type()&os.ModeSymlink == 0) {
-			continue
+		if _, exists := versions[item.Name]; exists {
+			return fmt.Errorf("duplicate skill %q", item.Name)
 		}
-		// Root confines recursive deletion to skills/, without following external symlinks.
-		_ = root.RemoveAll(entry.Name())
+		// Upgrade legacy unversioned skills before runners start.
+		if item.Version == 0 {
+			version, err := s.store.NextToolVersion(item.Name)
+			if err != nil {
+				return err
+			}
+			if err := installToolVersion(item.Type, item.Name, item.Url, version); err != nil {
+				return err
+			}
+			if err := s.store.UpdateTool(bson.M{"_id": item.ID}, bson.M{"$set": bson.M{"version": version}}); err != nil {
+				return err
+			}
+			item.Version = version
+		}
+		versions[item.Name] = item.Version
 	}
-	return nil
+	return local.Cleanup("skills", versions)
 }
 
 func (s *Service) Start() error {

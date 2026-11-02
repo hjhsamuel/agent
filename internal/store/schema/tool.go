@@ -14,7 +14,7 @@ type Tool struct {
 	Url        string         `bson:"url"`  // local/skill：压缩包下载地址；a2a/mcp：远端服务地址
 	Type       ToolType       `bson:"type"`
 	Credential *Credential    `bson:"credential"` // 认证信息
-	Version    int64          `bson:"version"`    // 已发布的本地工具版本，0 表示尚未安装
+	Version    int64          `bson:"version"`    // 已发布的本地工具或 skill 版本，0 表示尚未安装
 	State      ToolStatus     `bson:"state"`
 	Agent      *bson.ObjectID `bson:"agent,omitempty"`
 	CreatedAt  time.Time      `bson:"created_at"`

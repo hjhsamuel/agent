@@ -34,14 +34,6 @@ func (d *Store) FindTools(
 }
 
 func (d *Store) AddTool(obj *schema.Tool) (bson.ObjectID, error) {
-	if obj.Type == schema.ToolLocal {
-		_, err := d.getCollection(schema.ToolCollection).Indexes().CreateOne(context.Background(), mongo.IndexModel{
-			Keys: bson.D{{Key: "name", Value: 1}}, Options: options.Index().SetName("unique_local_tool_name").SetUnique(true).SetPartialFilterExpression(bson.M{"type": schema.ToolLocal}),
-		})
-		if err != nil {
-			return bson.ObjectID{}, err
-		}
-	}
 	result, err := d.getCollection(schema.ToolCollection).InsertOne(context.Background(), obj)
 	if err != nil {
 		return bson.ObjectID{}, err

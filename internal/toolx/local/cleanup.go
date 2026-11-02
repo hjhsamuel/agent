@@ -2,6 +2,7 @@ package local
 
 import (
 	"fmt"
+	"github.com/hjhsamuel/agent/pkg/skillx"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,7 +13,7 @@ import (
 // The tools directory must be exclusively owned by this service instance.
 func Cleanup(directory string, versions map[string]int64) error {
 	for name, version := range versions {
-		if err := ValidateName(name); err != nil {
+		if err := ValidateName(name); err != nil && skillx.ValidateName(name) != nil {
 			return err
 		}
 		if version < 0 {
@@ -53,7 +54,7 @@ func Cleanup(directory string, versions map[string]int64) error {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if ValidateName(name) != nil {
+		if ValidateName(name) != nil && skillx.ValidateName(name) != nil {
 			continue
 		}
 		version, exists := versions[name]
