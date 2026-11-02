@@ -106,6 +106,62 @@ Open [the UI](http://127.0.0.1:5001). Set `CAGENT_API_URL` to override the backe
 
 Enter the JWT cookie name and token in **连接与认证**. Configure a model, its API key, and a main Agent before chatting. See [ui/README.md](ui/README.md) for details.
 
+## Local tools
+
+A local tool is a trusted executable built for the server's OS and architecture. Package the following files in a ZIP archive (flat or inside one enclosing directory):
+
+```text
+echo_tool/
+  tool.json
+  echo_tool       # Windows: echo_tool.exe
+```
+
+`tool.json` defines a `FunctionDeclaration`. Use `ParametersJsonSchema` and `ResponseJsonSchema` for input/output descriptions; their JSON field names are `parametersJsonSchema` and `responseJsonSchema`:
+
+```json
+{
+  "name": "echo_tool",
+  "description": "Return the supplied message",
+  "parametersJsonSchema": {
+    "type": "object",
+    "properties": {
+      "message": {
+        "type": "string", 
+        "description": "Message to echo"
+      }
+    },
+    "required": ["message"],
+    "additionalProperties": false
+  },
+  "responseJsonSchema": {
+    "type": "object",
+    "properties": {
+      "message": {
+        "type": "string"
+      }
+    },
+    "required": ["message"]
+  }
+}
+```
+
+The declaration name, executable name and registered tool name must match. Names start with a letter and contain only letters, digits, `_` or `-` (up to 64 characters). Do not also set `parameters` or `response` when using the JSON Schema fields.
+
+The service invokes the executable through the system shell, with its version directory as the working directory. Read one JSON object from **stdin**, write one JSON object to **stdout**, send logs to **stderr**, and exit nonzero on failure. For example, input `{"message":"hello"}` produces output `{"message":"hello"}`. Validate input inside the executable; these schemas describe the interface and do not replace runtime validation.
+
+Host the archive at a downloadable URL and register it with the authenticated `POST /cagent/v1/tool` API:
+
+```json
+{
+  "name": "echo_tool",
+  "kind": 0,
+  "url": "https://example.com/echo_tool.zip",
+  "agent": "<agent-id>"
+}
+```
+
+Creation downloads asynchronously; wait for `state: 1` before use. Updating the URL installs a new version under `tools/<Name>/<Version>`; existing runners keep their original version even after update or deletion. Startup removes unused versions before restoring runners. Persist `tools` (Docker: `/app/tools`) and give each service instance its own directory.
+
 ## MongoDB
 
 Run in `mongosh` with the target database selected:
