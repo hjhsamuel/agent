@@ -186,6 +186,19 @@ func (a *Api) GetToolInfo(c *gin.Context) {
 			CreatedAt: toolObj.CreatedAt.Unix(),
 		},
 	}
+	if toolObj.Credential != nil {
+		rsp.Credential = &entities.Credential{
+			Type: int(toolObj.Credential.Type),
+			Key:  toolObj.Credential.Key,
+			Val:  toolObj.Credential.Value,
+		}
+	} else {
+		rsp.Credential = &entities.Credential{
+			Type: int(schema.CredentialHeaderApi),
+			Key:  "X-User-ID",
+			Val:  "",
+		}
+	}
 	if agentObj != nil {
 		rsp.AgentName = agentObj.Name
 		rsp.AgentID = agentObj.ID.Hex()

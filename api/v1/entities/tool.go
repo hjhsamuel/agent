@@ -48,8 +48,9 @@ type GetToolInfoReq struct {
 
 type GetToolInfoRsp struct {
 	ToolBase
-	AgentName string `json:"agent_name"` // agent 名称
-	AgentID   string `json:"agent_id"`   // agent id
+	AgentName  string      `json:"agent_name"` // agent 名称
+	AgentID    string      `json:"agent_id"`   // agent id
+	Credential *Credential `json:"credential"` // 认证信息
 }
 
 type UpdateToolStateReq struct {

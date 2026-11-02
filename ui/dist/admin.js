@@ -1,4 +1,5 @@
 import {markdownEditor} from './markdown.js';
+import {toolBody,toolValues} from './tool-form.js';
 const node=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
 const chat=document.querySelector('main');
 const panel=node('main');panel.id='admin';panel.hidden=true;document.body.append(panel);
@@ -14,9 +15,10 @@ const text=(key,label,required=true)=>({key,label,required});
 const number=(key,label,min,max)=>({key,label,type:'number',min,max,required:true});
 const select=(key,label,options)=>({key,label,options});
 const enabled=select('enable','状态',[['true','启用'],['false','停用']]);
-function edit(title,fields,values,save){
+function edit(title,fields,values,save,configure){
  const dialog=node('dialog');const form=node('form');form.append(node('h2',title));const inputs=[];const error=node('p');error.setAttribute('role','alert');
  for(const f of fields){const label=node('label',f.label);const input=node(f.options?'select':f.type==='textarea'?'textarea':'input');if(f.options){for(const [value,title] of f.options){const opt=node('option',title);opt.value=value;input.append(opt);}}else if(input.tagName==='INPUT') input.type=f.type||'text';input.required=!!f.required;if(f.min!==undefined)input.min=f.min;if(f.max!==undefined)input.max=f.max;input.value=values[f.key]??'';if(f.type==='textarea'){dialog.classList.add('agent-dialog');const field=node('div');field.className='markdown-field';field.append(node('div',f.label),markdownEditor(input,f.label));form.append(field);}else{label.append(input);form.append(label);}inputs.push([f,input]);}
+ if(configure)configure(form,Object.fromEntries(inputs.map(([f,input])=>[f.key,input])));
  const submit=node('button','保存');submit.className='primary';const actions=node('div');actions.className='actions';actions.append(button('取消',()=>dialog.close()),submit);form.append(error,actions);dialog.append(form);document.body.append(dialog);dialog.showModal();
  dialog.addEventListener('close',()=>dialog.remove());
  form.onsubmit=async e=>{e.preventDefault();const data={};for(const [f,input]of inputs){if(input.value===''&&f.omitEmpty)continue;data[f.key]=f.type==='number'?Number(input.value):input.value;if(f.key==='enable'||f.key==='upgrade')data[f.key]=input.value==='true';}submit.disabled=true;try{await save(data);dialog.close();}catch(e){error.textContent=e.message;}finally{submit.disabled=false;}};
@@ -37,10 +39,26 @@ async function agents(){const version=view('Agent 管理');content.append(button
 async function children(parent,type,offset='',append=false){const version=append?revision:view(parent.name+(type===1?' · 分组':' · 子 Agent'));if(!append)content.append(button('返回主 Agent',agents));const data=await api('/agent/'+parent.id+'/sub?'+new URLSearchParams({type,offset,limit:30}));if(version!==revision)return;for(const a of data.data){const el=card(a.name,a.description);agentActions(el,a,()=>children(parent,type));}if(!data.data.length)content.append(node('p','暂无记录。'));if(data.data.length===30){const more=button('加载更多',async()=>{await children(parent,type,data.offset,true);more.remove();});content.append(more);}}
 const kinds=[['0','Local'],['1','A2A'],['2','MCP'],['3','Skill']];
 const toolFields=[text('name','名称'),select('kind','类型',kinds),text('url','远程服务 / 压缩包地址'),text('agent','关联 Agent ID（留空不关联）',false)];
+function toolEditor(t={}){
+ const editing=!!t.id;
+ const fields=toolFields.filter(f=>!editing||f.key!=='kind').map(f=>editing&&f.key==='url'?{...f,required:false,omitEmpty:true,label:'新地址（留空不修改）'}:editing&&f.key==='agent'?{...f,label:'关联 Agent ID（留空不修改）'}:f);
+ fields.push(select('authMode','认证方式',[['keep',editing?'保持原认证':'默认认证（用户 ID）'],['header','Header API Key'],['bearer','Bearer Token']]),text('authKey','Header 名称（例如 X-Api-Key）',false),{...text('authValue','凭据值',false),type:'password'});
+ edit(editing?'编辑工具':'新增工具',fields,toolValues(t),async d=>{await api(editing?'/tool/'+t.id:'/tool',editing?'PUT':'POST',toolBody(d,editing?t.type:d.kind,editing,t.credential));await tools();},(form,inputs)=>{
+  const hint=node('p');form.append(hint);inputs.authValue.autocomplete='new-password';
+  const refresh=()=>{
+   const remote=[1,2].includes(Number(editing?t.type:inputs.kind.value));const mode=inputs.authMode.value;
+   inputs.authMode.parentElement.hidden=!remote;
+   inputs.authKey.parentElement.hidden=!remote||mode!=='header';inputs.authKey.required=remote&&mode==='header';
+   inputs.authValue.parentElement.hidden=!remote||mode==='keep';hint.hidden=!remote;
+   hint.textContent=mode==='keep'?(editing?'保存时保持原认证信息不变。':'使用默认认证，传递当前用户 ID。'):mode==='header'?'凭据值留空时使用当前用户 ID。修改认证信息后保存将整体替换。':'令牌留空时使用服务端生成的用户令牌。修改认证信息后保存将整体替换。';
+  };
+  inputs.authMode.addEventListener('change',refresh);inputs.kind?.addEventListener('change',refresh);refresh();
+ });
+}
 let filter={};
-async function tools(offset='',append=false){const version=append?revision:view('工具管理');if(!append){content.append(button('新增工具',()=>edit('新增工具',toolFields,{kind:2},async d=>{await api('/tool','POST',d);await tools();})),button('筛选',()=>edit('筛选工具',[{...text('agent','Agent ID（留空查询未关联）',false)},select('type','工具类型',[['','全部'],...kinds]),select('state','状态',[['','全部'],['0','准备中'],['1','上线'],['2','下线']])],filter,async d=>{filter={agent:d.agent};if(d.type!=='')filter.type=Number(d.type);if(d.state!=='')filter.state=Number(d.state);await tools();})),button('清除筛选',()=>{filter={};return tools();}));}
- const data=await api('/tool/find','POST',{...filter,offset,limit:30});if(version!==revision)return;for(const t of data.data){const el=card(t.name,`${kinds[t.type]?.[1]||t.type} · ${['准备中','上线','下线'][t.state]} · ${t.link?'已关联':'未关联'}`);el.append(button('详情与编辑',()=>tool(t.id)),button(t.state===1?'下线':'上线',async()=>{await api('/tool/'+t.id+'/state','PUT',{state:t.state===1?2:1});await tools();}));}if(!data.data.length)content.append(node('p','暂无工具。'));if(data.data.length===30){const more=button('加载更多',async()=>{await tools(data.offset,true);more.remove();});content.append(more);}}
-async function tool(id){const t=await api('/tool/'+id);edit('编辑工具 · '+(t.agent_name||'未关联 Agent'),toolFields.filter(f=>f.key!=='kind').map(f=>f.key==='url'?{...f,required:false,omitEmpty:true,label:'新地址（留空不修改）'}:f),{...t,agent:t.agent_id||''},async d=>{await api('/tool/'+id,'PUT',d);await tools();});}
+async function tools(offset='',append=false){const version=append?revision:view('工具管理');if(!append){content.append(button('新增工具',()=>toolEditor()),button('筛选',()=>edit('筛选工具',[{...text('agent','Agent ID（留空查询未关联）',false)},select('type','工具类型',[['','全部'],...kinds]),select('state','状态',[['','全部'],['0','准备中'],['1','上线'],['2','下线']])],filter,async d=>{filter={agent:d.agent};if(d.type!=='')filter.type=Number(d.type);if(d.state!=='')filter.state=Number(d.state);await tools();})),button('清除筛选',()=>{filter={};return tools();}));}
+ const data=await api('/tool/find','POST',{...filter,offset,limit:30});if(version!==revision)return;for(const t of data.data){const el=card(t.name,`${kinds[t.type]?.[1]||t.type} · ${['准备中','上线','下线'][t.state]} · ${t.link?'已关联':'未关联'}`);el.append(button('详情与编辑',()=>tool(t.id)),button(t.state===1?'下线':'上线',async()=>{await api('/tool/'+t.id+'/state','PUT',{state:t.state===1?2:1});await tools();}),button('删除',async()=>{if(!confirm('确定删除工具「'+t.name+'」？删除后无法恢复。'))return;await api('/tool/'+t.id,'DELETE');await tools();}));}if(!data.data.length)content.append(node('p','暂无工具。'));if(data.data.length===30){const more=button('加载更多',async()=>{await tools(data.offset,true);more.remove();});content.append(more);}}
+async function tool(id){toolEditor(await api('/tool/'+id));}
 function secrets(){view('加密密钥');const el=card('生成新的加密密钥版本','为后端生成 KMS 密钥并写入后端 .env，用于加密模型 API Key。已有版本需保留；可在 API Key 编辑中重新加密到最新版本。');el.append(button('生成新版本',async()=>{if(!confirm('确定生成新的加密密钥版本并写入后端 .env？'))return;const data=await api('/secret','POST',{});alert.textContent='已生成密钥版本：'+data.version;}));}
 async function show(name){chat.hidden=name!=='聊天';panel.hidden=name==='聊天';for(const b of nav.children)b.classList.toggle('active',b.textContent===name);if(name==='聊天'){revision++;return;}await ({'模型':models,'Agent':agents,'工具':tools,'加密密钥':secrets}[name])();}
 for(const name of ['聊天','模型','Agent','工具','加密密钥'])nav.append(button(name,()=>show(name)));
