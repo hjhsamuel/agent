@@ -21,6 +21,7 @@ func NewA2A(path string, cred auth.CredentialProvider) (agent.Agent, error) {
 		return nil, err
 	}
 
+	// 由于 remoteagent 内部没有实现 GetTask 轮询，因此目前强制使用 SSE 方式
 	return remoteagent.NewA2A(remoteagent.A2AConfig{
 		Name:        card.Name,
 		Description: card.Description,

@@ -203,7 +203,7 @@ func (s *Service) getCredentialProvider(user *common.Auth, credential *schema.Cr
 	}
 }
 
-func (s *Service) buildRunner(obj *schema.Session) (*Runner, error) {
+func (s *Service) buildRunner(user *common.Auth, obj *schema.Session) (*Runner, error) {
 	agt, err := s.getAgentTree()
 	if err != nil {
 		return nil, err
@@ -238,10 +238,6 @@ func (s *Service) buildRunner(obj *schema.Session) (*Runner, error) {
 		agentTool[*item.Agent][item.Type] = append(agentTool[*item.Agent][item.Type], item)
 	}
 
-	id, _ := strconv.Atoi(obj.User)
-	user := &common.Auth{
-		ID: id,
-	}
 	mainAgt, err := s.buildAgent(user, agt, agentTool, llmModel)
 	if err != nil {
 		return nil, err
@@ -314,7 +310,7 @@ func (s *Service) acquireProducer(id string) (*sessionLife, *ringbuffer.RingBuff
 	return life, producer, nil
 }
 
-func (s *Service) Run(user, id string, content string) error {
+func (s *Service) Run(user *common.Auth, id string, content string) error {
 	sessionId, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return errors.New("invalid session")
@@ -325,7 +321,8 @@ func (s *Service) Run(user, id string, content string) error {
 		return err
 	}
 
-	obj, err := s.GetSession(user, id)
+	userId := strconv.Itoa(user.ID)
+	obj, err := s.GetSession(userId, id)
 	if err != nil {
 		s.finishLife(sessionId.Hex(), ctx)
 		return err
@@ -334,7 +331,7 @@ func (s *Service) Run(user, id string, content string) error {
 		s.finishLife(sessionId.Hex(), ctx)
 		return errors.New("session is not available for a new turn")
 	}
-	r, err := s.buildRunner(obj)
+	r, err := s.buildRunner(user, obj)
 	if err != nil {
 		s.finishLife(sessionId.Hex(), ctx)
 		return err
@@ -354,7 +351,7 @@ func (s *Service) Run(user, id string, content string) error {
 	}
 
 	msg := genai.NewContentFromText(content, genai.RoleUser)
-	go s.newTurn(ctx, producer, user, sessionId, turnId, r, msg, state == schema.SessionTemp)
+	go s.newTurn(ctx, producer, userId, sessionId, turnId, r, msg, state == schema.SessionTemp)
 
 	return nil
 }
@@ -569,7 +566,7 @@ func (s *Service) run(
 	return inputRequiredReqs, nil
 }
 
-func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, content string) error {
+func (s *Service) SetInputRequiredInfo(user *common.Auth, id string, toolCallId string, content string) error {
 	sessionId, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return err
@@ -578,7 +575,9 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 	if strings.TrimSpace(content) == "" {
 		return errors.New("input is empty")
 	}
-	obj, err := s.store.SubmitWaitInput(user, sessionId, toolCallId, content)
+
+	userId := strconv.Itoa(user.ID)
+	obj, err := s.store.SubmitWaitInput(userId, sessionId, toolCallId, content)
 	if err != nil {
 		return err
 	}
@@ -591,13 +590,13 @@ func (s *Service) SetInputRequiredInfo(user, id string, toolCallId string, conte
 		return err
 	}
 
-	r, err := s.buildRunner(obj)
+	r, err := s.buildRunner(user, obj)
 	if err != nil {
 		s.finishLife(sessionId.Hex(), ctx)
 		return err
 	}
 
-	go s.newTurn(ctx, producer, user, sessionId, obj.TurnSeq-1, r, buildInputRequiredMessage(obj.Wait), false)
+	go s.newTurn(ctx, producer, userId, sessionId, obj.TurnSeq-1, r, buildInputRequiredMessage(obj.Wait), false)
 
 	return nil
 }

@@ -1,6 +1,9 @@
 package service
 
 import (
+	"strconv"
+
+	"github.com/hjhsamuel/agent/api/common"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 )
 
@@ -17,7 +20,9 @@ func (s *Service) recoverSession(obj *schema.Session) error {
 		s.finishLife(obj.ID.Hex(), ctx)
 		return err
 	}
-	r, err := s.buildRunner(obj)
+
+	id, _ := strconv.Atoi(obj.User)
+	r, err := s.buildRunner(&common.Auth{ID: id}, obj)
 	if err != nil {
 		s.finishLife(obj.ID.Hex(), ctx)
 		return err

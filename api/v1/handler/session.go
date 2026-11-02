@@ -203,7 +203,7 @@ func (a *Api) Chat(c *gin.Context) {
 
 	auth := common.GetAuth(c)
 
-	err := a.srv.Run(strconv.Itoa(auth.ID), req.ID, req.Content)
+	err := a.srv.Run(auth, req.ID, req.Content)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
@@ -245,7 +245,7 @@ func (a *Api) InputRequired(c *gin.Context) {
 
 	auth := common.GetAuth(c)
 
-	err := a.srv.SetInputRequiredInfo(strconv.Itoa(auth.ID), req.ID, req.CallID, req.Content)
+	err := a.srv.SetInputRequiredInfo(auth, req.ID, req.CallID, req.Content)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
