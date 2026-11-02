@@ -34,6 +34,14 @@ func (d *Store) FindTools(
 }
 
 func (d *Store) AddTool(obj *schema.Tool) (bson.ObjectID, error) {
+	if obj.Type == schema.ToolLocal {
+		_, err := d.getCollection(schema.ToolCollection).Indexes().CreateOne(context.Background(), mongo.IndexModel{
+			Keys: bson.D{{Key: "name", Value: 1}}, Options: options.Index().SetName("unique_local_tool_name").SetUnique(true).SetPartialFilterExpression(bson.M{"type": schema.ToolLocal}),
+		})
+		if err != nil {
+			return bson.ObjectID{}, err
+		}
+	}
 	result, err := d.getCollection(schema.ToolCollection).InsertOne(context.Background(), obj)
 	if err != nil {
 		return bson.ObjectID{}, err
@@ -75,4 +83,16 @@ func (d *Store) FindOneAndUpdateTool(
 func (d *Store) DeleteTool(filter bson.M) error {
 	_, err := d.getCollection(schema.ToolCollection).DeleteOne(context.Background(), filter)
 	return err
+}
+
+// NextToolVersion reserves a monotonically increasing version per Name.
+// Counters survive deletion so a recreated tool cannot overwrite runners' files.
+func (d *Store) NextToolVersion(name string) (int64, error) {
+	var counter struct {
+		Version int64 `bson:"version"`
+	}
+	err := d.getCollection("cagent_tool_version").FindOneAndUpdate(context.Background(),
+		bson.M{"_id": name}, bson.M{"$inc": bson.M{"version": int64(1)}},
+		options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)).Decode(&counter)
+	return counter.Version, err
 }

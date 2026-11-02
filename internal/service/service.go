@@ -11,6 +11,7 @@ import (
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store"
 	"github.com/hjhsamuel/agent/internal/store/schema"
+	"github.com/hjhsamuel/agent/internal/toolx/local"
 	"github.com/hjhsamuel/agent/pkg/kms"
 	"github.com/hjhsamuel/agent/pkg/skillx"
 	"github.com/sirupsen/logrus"
@@ -28,6 +29,22 @@ type Service struct {
 	wg          sync.WaitGroup
 	lifecycleMu sync.Mutex
 	stopping    atomic.Bool
+}
+
+// initLocalTools runs during construction, before API access and runner recovery.
+func (s *Service) initLocalTools() error {
+	tools, err := s.store.FindTools(bson.M{"type": schema.ToolLocal})
+	if err != nil {
+		return err
+	}
+	versions := make(map[string]int64, len(tools))
+	for _, item := range tools {
+		if _, exists := versions[item.Name]; exists {
+			return fmt.Errorf("duplicate local tool %q", item.Name)
+		}
+		versions[item.Name] = item.Version
+	}
+	return local.Cleanup("tools", versions)
 }
 
 func (s *Service) initSkill() error {
@@ -161,6 +178,10 @@ func NewService() (*Service, error) {
 		return nil, err
 	}
 	s.store = storage
+
+	if err = s.initLocalTools(); err != nil {
+		return nil, fmt.Errorf("clean local tool versions: %w", err)
+	}
 
 	// adk session storage
 	s.adkSession = adapter.NewSessionService(storage)

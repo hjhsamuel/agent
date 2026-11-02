@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/hjhsamuel/agent/internal/toolx/local"
+
 	"github.com/hjhsamuel/agent/internal/store/request"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"github.com/hjhsamuel/agent/pkg/filex"
@@ -25,6 +27,11 @@ func (s *Service) AddTool(
 	agentId string,
 	cred *schema.Credential,
 ) (string, error) {
+	if schema.ToolType(kind) == schema.ToolLocal {
+		if err := local.ValidateName(name); err != nil {
+			return "", err
+		}
+	}
 	obj := &schema.Tool{
 		Name:      name,
 		Url:       baseUrl,
@@ -102,15 +109,26 @@ func (s *Service) asyncToolLoader(obj *schema.Tool) {
 			state = schema.ToolStatusOnline
 		}
 	case schema.ToolLocal:
-		// TODO
-		// 暂不支持本地工具
-		state = schema.ToolStatusOffline
+		version, err := s.store.NextToolVersion(obj.Name)
+		if err == nil {
+			_, err = local.Install(context.Background(), obj.Name, obj.Url, version)
+		}
+		if err != nil {
+			state = schema.ToolStatusOffline
+		} else {
+			_ = s.store.UpdateTool(
+				bson.M{"_id": obj.ID, "state": schema.ToolStatusLoading},
+				bson.M{"$set": bson.M{"state": schema.ToolStatusOnline, "version": version}},
+			)
+			return
+		}
+
 	default:
 		return
 	}
 
 	_ = s.store.UpdateTool(
-		bson.M{"_id": obj.ID},
+		bson.M{"_id": obj.ID, "state": schema.ToolStatusLoading},
 		bson.M{"$set": bson.M{"state": state}},
 	)
 }
@@ -258,9 +276,7 @@ func (s *Service) UpdateToolState(id string, state int) error {
 				bson.M{"_id": toolId, "state": schema.ToolStatusOffline},
 				bson.M{"$set": bson.M{"state": schema.ToolStatusOnline}},
 			)
-		case schema.ToolLocal:
-			return errors.New("not supported")
-		case schema.ToolSkill:
+		case schema.ToolLocal, schema.ToolSkill:
 			err = s.store.UpdateTool(
 				bson.M{"_id": toolId, "state": schema.ToolStatusOffline},
 				bson.M{"$set": bson.M{"state": schema.ToolStatusLoading}},
@@ -283,7 +299,7 @@ func (s *Service) UpdateToolState(id string, state int) error {
 		}
 	case schema.ToolStatusOffline:
 		return s.store.UpdateTool(
-			bson.M{"_id": toolId},
+			bson.M{"_id": toolId, "state": bson.M{"$ne": schema.ToolStatusLoading}},
 			bson.M{"$set": bson.M{"state": state}},
 		)
 	default:
@@ -359,9 +375,27 @@ func (s *Service) UpdateToolInfo(id string, req *request.UpdateToolReq) error {
 			return s.store.UpdateTool(bson.M{"_id": toolId}, bson.M{"$set": update})
 		}
 	case schema.ToolLocal:
-		// TODO
-		// 暂不支持
-		return errors.New("not supported")
+		if req.Name != nil && *req.Name != toolObj.Name {
+			return errors.New("local tool name is immutable")
+		}
+		if req.Url != nil {
+			version, err := s.store.NextToolVersion(toolObj.Name)
+			if err == nil {
+				_, err = local.Install(context.Background(), toolObj.Name, *req.Url, version)
+			}
+			if err != nil {
+				return err
+			}
+			update["url"] = *req.Url
+			update["version"] = version
+		}
+		filter := bson.M{"_id": toolId, "state": bson.M{"$ne": schema.ToolStatusLoading}}
+		if version, ok := update["version"]; ok {
+			// A slower download must not roll back a newer published version.
+			filter["$or"] = bson.A{bson.M{"version": bson.M{"$lt": version}}, bson.M{"version": bson.M{"$exists": false}}}
+		}
+		return s.store.UpdateTool(filter, bson.M{"$set": update})
+
 	default:
 		return errors.New("unknown tool type")
 	}

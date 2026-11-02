@@ -14,7 +14,7 @@ type Tool struct {
 	Url        string         `bson:"url"`  // local/skill：压缩包下载地址；a2a/mcp：远端服务地址
 	Type       ToolType       `bson:"type"`
 	Credential *Credential    `bson:"credential"` // 认证信息
-	Hash       *HashInfo      `bson:"hash"`       // 仅用于本地工具校验
+	Version    int64          `bson:"version"`    // 已发布的本地工具版本，0 表示尚未安装
 	State      ToolStatus     `bson:"state"`
 	Agent      *bson.ObjectID `bson:"agent,omitempty"`
 	CreatedAt  time.Time      `bson:"created_at"`
@@ -41,19 +41,6 @@ type CredentialType int
 const (
 	CredentialHeaderApi CredentialType = iota // header-based API key, like 'X-Api-Key'
 	CredentialBearer                          // the specific bearer token
-)
-
-type HashInfo struct {
-	Type HashType `bson:"type"`
-	Val  string   `bson:"val"`
-}
-
-type HashType int
-
-const (
-	HashMD5    HashType = iota // md5
-	HashSHA256                 // sha256
-	HashXXH3                   // xxh3
 )
 
 type ToolStatus int

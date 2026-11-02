@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hjhsamuel/agent/internal/toolx/local"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/hjhsamuel/agent/api/common"
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
@@ -129,13 +131,22 @@ func (s *Service) buildAgent(
 	}
 
 	var (
-		mcps  = make([]tool.Toolset, 0)
-		a2as  = make([]agent.Agent, 0)
-		skill tool.Toolset
+		locals []tool.Tool
+		mcps   = make([]tool.Toolset, 0)
+		a2as   = make([]agent.Agent, 0)
+		skill  tool.Toolset
 	)
 	if v, ok := agentTool[cfg.ID]; ok {
 		for kind, vs := range v {
 			switch kind {
+			case schema.ToolLocal:
+				for _, item := range vs {
+					t, err := local.Load(local.VersionDir(item.Name, item.Version), item.Name)
+					if err != nil {
+						return nil, err
+					}
+					locals = append(locals, t)
+				}
 			case schema.ToolMcp:
 				for _, item := range vs {
 					cred := s.getCredentialProvider(user, item.Credential)
@@ -167,6 +178,7 @@ func (s *Service) buildAgent(
 		Instruction: cfg.Prompt,
 		SubAgents:   append(subAgents, a2as...),
 		Toolsets:    mcps,
+		Tools:       locals,
 		Model:       llmModel,
 	})
 }
