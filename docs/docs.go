@@ -1675,7 +1675,7 @@ const docTemplate = `{
                         "CookieAuth": []
                     }
                 ],
-                "description": "按需更新工具名称、地址和关联 Agent。",
+                "description": "按需更新工具名称、地址和关联 Agent；MCP/A2A 支持整体替换 credential，省略或 null 保持原认证信息不变。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1725,6 +1725,56 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "更新工具失败",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "CookieAuth": []
+                    }
+                ],
+                "description": "根据工具 ID 删除工具记录。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "工具"
+                ],
+                "summary": "删除工具",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "工具 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "必填参数缺失",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "认证 Cookie 缺失或无效",
+                        "schema": {
+                            "$ref": "#/definitions/common.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "删除工具失败",
                         "schema": {
                             "$ref": "#/definitions/common.Response"
                         }
@@ -1919,6 +1969,10 @@ const docTemplate = `{
                     "description": "agent id",
                     "type": "string"
                 },
+                "credential": {
+                    "description": "认证信息",
+                    "$ref": "#/definitions/entities.Credential"
+                },
                 "kind": {
                     "description": "类型。0：local tool; 1: a2a; 2: mcp; 3: skill",
                     "type": "integer"
@@ -1996,6 +2050,21 @@ const docTemplate = `{
             "properties": {
                 "content": {
                     "description": "对话消息",
+                    "type": "string"
+                }
+            }
+        },
+        "entities.Credential": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "认证方式。0：header-base api；1：bearer token",
+                    "type": "integer"
+                },
+                "val": {
                     "type": "string"
                 }
             }
@@ -2336,6 +2405,10 @@ const docTemplate = `{
                 "agent": {
                     "description": "agent id",
                     "type": "string"
+                },
+                "credential": {
+                    "description": "MCP/A2A 认证信息；省略或 null 保持不变，提供对象时整体替换",
+                    "$ref": "#/definitions/entities.Credential"
                 },
                 "name": {
                     "description": "名称",

@@ -58,10 +58,11 @@ type UpdateToolStateReq struct {
 }
 
 type UpdateToolReq struct {
-	ID    string  `uri:"id" swaggerignore:"true"` // tool id
-	Name  *string `json:"name"`                   // 名称
-	Url   *string `json:"url"`                    // 地址
-	Agent *string `json:"agent"`                  // agent id
+	Credential *Credential `json:"credential"`             // MCP/A2A 认证信息；省略或 null 保持不变，提供对象时整体替换
+	ID         string      `uri:"id" swaggerignore:"true"` // tool id
+	Name       *string     `json:"name"`                   // 名称
+	Url        *string     `json:"url"`                    // 地址
+	Agent      *string     `json:"agent"`                  // agent id
 }
 
 type DeleteToolReq struct {

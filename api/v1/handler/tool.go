@@ -239,7 +239,7 @@ func (a *Api) UpdateToolState(c *gin.Context) {
 
 // UpdateTool 更新工具。
 // @Summary 更新工具
-// @Description 按需更新工具名称、地址和关联 Agent。
+// @Description 按需更新工具名称、地址和关联 Agent；MCP/A2A 支持整体替换 credential，省略或 null 保持原认证信息不变。
 // @Tags 工具
 // @Accept json
 // @Produce json
@@ -264,10 +264,19 @@ func (a *Api) UpdateTool(c *gin.Context) {
 		return
 	}
 
+	var cred *schema.Credential
+	if req.Credential != nil {
+		cred = &schema.Credential{
+			Type:  schema.CredentialType(req.Credential.Type),
+			Key:   req.Credential.Key,
+			Value: req.Credential.Val,
+		}
+	}
 	err := a.srv.UpdateToolInfo(req.ID, &request.UpdateToolReq{
-		Name:  req.Name,
-		Url:   req.Url,
-		Agent: req.Agent,
+		Credential: cred,
+		Name:       req.Name,
+		Url:        req.Url,
+		Agent:      req.Agent,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
@@ -281,6 +290,18 @@ func (a *Api) UpdateTool(c *gin.Context) {
 	}
 }
 
+// DeleteTool 删除工具。
+// @Summary 删除工具
+// @Description 根据工具 ID 删除工具记录。
+// @Tags 工具
+// @Produce json
+// @Security CookieAuth
+// @Param id path string true "工具 ID"
+// @Success 200 {object} common.Response "请求成功"
+// @Failure 400 {object} common.Response "必填参数缺失"
+// @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
+// @Failure 500 {object} common.Response "删除工具失败"
+// @Router /v1/tool/{id} [delete]
 func (a *Api) DeleteTool(c *gin.Context) {
 	var req entities.DeleteToolReq
 	_ = c.ShouldBindUri(&req)

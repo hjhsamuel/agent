@@ -82,6 +82,9 @@ definitions:
       agent:
         description: agent id
         type: string
+      credential:
+        $ref: '#/definitions/entities.Credential'
+        description: 认证信息
       kind:
         description: '类型。0：local tool; 1: a2a; 2: mcp; 3: skill'
         type: integer
@@ -138,6 +141,16 @@ definitions:
     properties:
       content:
         description: 对话消息
+        type: string
+    type: object
+  entities.Credential:
+    properties:
+      key:
+        type: string
+      type:
+        description: 认证方式。0：header-base api；1：bearer token
+        type: integer
+      val:
         type: string
     type: object
   entities.GenerateSecretRsp:
@@ -377,6 +390,9 @@ definitions:
       agent:
         description: agent id
         type: string
+      credential:
+        $ref: '#/definitions/entities.Credential'
+        description: MCP/A2A 认证信息；省略或 null 保持不变，提供对象时整体替换
       name:
         description: 名称
         type: string
@@ -1340,6 +1356,38 @@ paths:
       tags:
       - 工具
   /v1/tool/{id}:
+    delete:
+      description: 根据工具 ID 删除工具记录。
+      parameters:
+      - description: 工具 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 请求成功
+          schema:
+            $ref: '#/definitions/common.Response'
+        "400":
+          description: 必填参数缺失
+          schema:
+            $ref: '#/definitions/common.Response'
+        "401":
+          description: 认证 Cookie 缺失或无效
+          schema:
+            $ref: '#/definitions/common.Response'
+        "500":
+          description: 删除工具失败
+          schema:
+            $ref: '#/definitions/common.Response'
+      security:
+      - CookieAuth: []
+      summary: 删除工具
+      tags:
+      - 工具
     get:
       description: 返回工具基本信息及关联的 Agent ID 和名称。
       parameters:
@@ -1380,7 +1428,7 @@ paths:
     put:
       consumes:
       - application/json
-      description: 按需更新工具名称、地址和关联 Agent。
+      description: 按需更新工具名称、地址和关联 Agent；MCP/A2A 支持整体替换 credential，省略或 null 保持原认证信息不变。
       parameters:
       - description: 工具 ID
         in: path

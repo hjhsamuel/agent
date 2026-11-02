@@ -324,6 +324,20 @@ func (s *Service) UpdateToolInfo(id string, req *request.UpdateToolReq) error {
 	toolObj := objs[0]
 	switch toolObj.Type {
 	case schema.ToolA2A, schema.ToolMcp:
+		if req.Credential != nil {
+			cred := *req.Credential
+			switch cred.Type {
+			case schema.CredentialHeaderApi:
+				if cred.Key == "" {
+					return errors.New("credential key is required")
+				}
+			case schema.CredentialBearer:
+				cred.Key = ""
+			default:
+				return errors.New("invalid credential type")
+			}
+			update["credential"] = &cred
+		}
 		if req.Name != nil {
 			update["name"] = *req.Name
 		}

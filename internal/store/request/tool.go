@@ -1,5 +1,7 @@
 package request
 
+import "github.com/hjhsamuel/agent/internal/store/schema"
+
 type GetToolsReq struct {
 	Agent *string
 	Type  *int
@@ -10,7 +12,8 @@ type GetToolsReq struct {
 }
 
 type UpdateToolReq struct {
-	Name  *string
-	Url   *string
-	Agent *string
+	Credential *schema.Credential
+	Name       *string
+	Url        *string
+	Agent      *string
 }
