@@ -71,3 +71,8 @@ func (d *Store) FindOneAndUpdateTool(
 
 	return &obj, nil
 }
+
+func (d *Store) DeleteTool(filter bson.M) error {
+	_, err := d.getCollection(schema.ToolCollection).DeleteOne(context.Background(), filter)
+	return err
+}

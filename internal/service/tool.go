@@ -42,20 +42,22 @@ func (s *Service) AddTool(
 		obj.State = schema.ToolStatusOffline
 	}
 
-	switch cred.Type {
-	case schema.CredentialHeaderApi:
-		obj.Credential = &schema.Credential{
-			Type:  schema.CredentialHeaderApi,
-			Key:   cred.Key,
-			Value: cred.Value,
+	if cred != nil {
+		switch cred.Type {
+		case schema.CredentialHeaderApi:
+			obj.Credential = &schema.Credential{
+				Type:  schema.CredentialHeaderApi,
+				Key:   cred.Key,
+				Value: cred.Value,
+			}
+		case schema.CredentialBearer:
+			obj.Credential = &schema.Credential{
+				Type:  schema.CredentialBearer,
+				Value: cred.Value,
+			}
+		default:
+			return "", errors.New("invalid credential type")
 		}
-	case schema.CredentialBearer:
-		obj.Credential = &schema.Credential{
-			Type:  schema.CredentialBearer,
-			Value: cred.Value,
-		}
-	default:
-		return "", errors.New("invalid credential type")
 	}
 
 	withAsync := false
@@ -349,4 +351,13 @@ func (s *Service) UpdateToolInfo(id string, req *request.UpdateToolReq) error {
 	default:
 		return errors.New("unknown tool type")
 	}
+}
+
+func (s *Service) DeleteTool(id string) error {
+	toolId, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+
+	return s.store.DeleteTool(bson.M{"_id": toolId})
 }

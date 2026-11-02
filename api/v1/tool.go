@@ -15,4 +15,5 @@ func toolRoute(api *handler.Api, g *gin.RouterGroup) {
 	group.GET("/:id", api.GetToolInfo)
 	group.PUT("/:id/state", api.UpdateToolState)
 	group.PUT("/:id", api.UpdateTool)
+	group.DELETE("/:id", api.DeleteTool)
 }

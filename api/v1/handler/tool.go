@@ -46,6 +46,15 @@ func (a *Api) AddTool(c *gin.Context) {
 		return
 	}
 
+	var cred *schema.Credential
+	if req.Credential != nil {
+		cred = &schema.Credential{
+			Type:  schema.CredentialType(req.Credential.Type),
+			Key:   req.Credential.Key,
+			Value: req.Credential.Val,
+		}
+	}
+
 	auth := common.GetAuth(c)
 
 	id, err := a.srv.AddTool(
@@ -54,11 +63,7 @@ func (a *Api) AddTool(c *gin.Context) {
 		req.Kind,
 		req.Url,
 		req.Agent,
-		&schema.Credential{
-			Type:  schema.CredentialType(req.Credential.Type),
-			Key:   req.Credential.Key,
-			Value: req.Credential.Val,
-		},
+		cred,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
@@ -268,6 +273,31 @@ func (a *Api) UpdateTool(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
 			Message: fmt.Sprintf("update tool: %v", err),
+		})
+	} else {
+		c.JSON(http.StatusOK, &common.Response{
+			Code: http.StatusOK,
+		})
+	}
+}
+
+func (a *Api) DeleteTool(c *gin.Context) {
+	var req entities.DeleteToolReq
+	_ = c.ShouldBindUri(&req)
+
+	if req.ID == "" {
+		c.JSON(http.StatusBadRequest, &common.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid argument: id is required",
+		})
+		return
+	}
+
+	err := a.srv.DeleteTool(req.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &common.Response{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("delete tool: %v", err),
 		})
 	} else {
 		c.JSON(http.StatusOK, &common.Response{
