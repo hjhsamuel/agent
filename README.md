@@ -116,7 +116,7 @@ echo_tool/
   echo_tool       # Windows: echo_tool.exe
 ```
 
-`tool.json` defines a `FunctionDeclaration`. Use `ParametersJsonSchema` and `ResponseJsonSchema` for input/output descriptions; their JSON field names are `parametersJsonSchema` and `responseJsonSchema`:
+`tool.json` contains four fields: `name`, `description`, `parametersJsonSchema` (input JSON Schema), and `responseJsonSchema` (output JSON Schema):
 
 ```json
 {
@@ -145,7 +145,7 @@ echo_tool/
 }
 ```
 
-The declaration name, executable name and registered tool name must match. Names start with a letter and contain only letters, digits, `_` or `-` (up to 64 characters). Do not also set `parameters` or `response` when using the JSON Schema fields.
+The tool name, executable name and registered tool name must match. Names start with a letter and contain only letters, digits, `_` or `-` (up to 64 characters).
 
 The service invokes the executable through the system shell, with its version directory as the working directory. Read one JSON object from **stdin**, write one JSON object to **stdout**, send logs to **stderr**, and exit nonzero on failure. For example, input `{"message":"hello"}` produces output `{"message":"hello"}`. Validate input inside the executable; these schemas describe the interface and do not replace runtime validation.
 

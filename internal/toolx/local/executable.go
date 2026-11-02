@@ -53,8 +53,19 @@ func Load(dir, name string) (*Executable, error) {
 	if runtime.GOOS == "windows" {
 		t.binary += ".exe"
 	}
-	if err := json.Unmarshal(data, &t.declaration); err != nil {
+	var manifest Manifest
+	if err = json.Unmarshal(data, &manifest); err != nil {
 		return nil, err
+	}
+	t.declaration = genai.FunctionDeclaration{
+		Name:        manifest.Name,
+		Description: manifest.Description,
+	}
+	if manifest.ParametersJsonSchema != nil {
+		t.declaration.ParametersJsonSchema = manifest.ParametersJsonSchema
+	}
+	if manifest.ResponseJsonSchema != nil {
+		t.declaration.ResponseJsonSchema = manifest.ResponseJsonSchema
 	}
 	if t.Name() != name {
 		return nil, fmt.Errorf("declaration name must equal %q", name)
