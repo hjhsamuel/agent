@@ -172,6 +172,10 @@ func (s *Service) buildAgent(
 }
 
 func (s *Service) getCredentialProvider(user *common.Auth, credential *schema.Credential) auth.CredentialProvider {
+	if credential == nil {
+		return auth.APIKey("X-User-ID", strconv.Itoa(user.ID))
+	}
+
 	switch credential.Type {
 	case schema.CredentialHeaderApi:
 		if credential.Value == "" {
@@ -195,7 +199,7 @@ func (s *Service) getCredentialProvider(user *common.Auth, credential *schema.Cr
 			return auth.StaticToken(credential.Value)
 		}
 	default:
-		return auth.APIKey("X-User_ID", strconv.Itoa(user.ID))
+		return auth.APIKey("X-User-ID", strconv.Itoa(user.ID))
 	}
 }
 

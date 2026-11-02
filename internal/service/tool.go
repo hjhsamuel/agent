@@ -17,7 +17,14 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-func (s *Service) AddTool(user string, name string, kind int, baseUrl string, agentId string) (string, error) {
+func (s *Service) AddTool(
+	user string,
+	name string,
+	kind int,
+	baseUrl string,
+	agentId string,
+	cred *schema.Credential,
+) (string, error) {
 	obj := &schema.Tool{
 		Name:      name,
 		Url:       baseUrl,
@@ -33,6 +40,22 @@ func (s *Service) AddTool(user string, name string, kind int, baseUrl string, ag
 		obj.State = schema.ToolStatusOnline
 	} else {
 		obj.State = schema.ToolStatusOffline
+	}
+
+	switch cred.Type {
+	case schema.CredentialHeaderApi:
+		obj.Credential = &schema.Credential{
+			Type:  schema.CredentialHeaderApi,
+			Key:   cred.Key,
+			Value: cred.Value,
+		}
+	case schema.CredentialBearer:
+		obj.Credential = &schema.Credential{
+			Type:  schema.CredentialBearer,
+			Value: cred.Value,
+		}
+	default:
+		return "", errors.New("invalid credential type")
 	}
 
 	withAsync := false

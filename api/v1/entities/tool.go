@@ -1,10 +1,17 @@
 package entities
 
 type AddToolReq struct {
-	Name  string `json:"name"`  // 名称
-	Kind  int    `json:"kind"`  // 类型。0：local tool; 1: a2a; 2: mcp; 3: skill
-	Url   string `json:"url"`   // 远程服务地址，压缩包下载地址
-	Agent string `json:"agent"` // agent id
+	Name       string     `json:"name"`       // 名称
+	Kind       int        `json:"kind"`       // 类型。0：local tool; 1: a2a; 2: mcp; 3: skill
+	Url        string     `json:"url"`        // 远程服务地址，压缩包下载地址
+	Agent      string     `json:"agent"`      // agent id
+	Credential Credential `json:"credential"` // 认证信息
+}
+
+type Credential struct {
+	Type int    `json:"type"` // 认证方式。0：header-base api；1：bearer token
+	Key  string `json:"key"`
+	Val  string `json:"val"`
 }
 
 type GetToolListReq struct {

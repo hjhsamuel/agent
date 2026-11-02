@@ -15,6 +15,7 @@ func NewA2A(path string, cred auth.CredentialProvider) (agent.Agent, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 
+	// 默认使用不鉴权接口获取 AgentCard
 	card, err := agentcard.DefaultResolver.Resolve(ctx, path)
 	if err != nil {
 		return nil, err

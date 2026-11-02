@@ -10,6 +10,7 @@ import (
 	"github.com/hjhsamuel/agent/api/common"
 	"github.com/hjhsamuel/agent/api/v1/entities"
 	"github.com/hjhsamuel/agent/internal/store/request"
+	"github.com/hjhsamuel/agent/internal/store/schema"
 )
 
 // AddTool 新增工具。
@@ -47,7 +48,18 @@ func (a *Api) AddTool(c *gin.Context) {
 
 	auth := common.GetAuth(c)
 
-	id, err := a.srv.AddTool(strconv.Itoa(auth.ID), req.Name, req.Kind, req.Url, req.Agent)
+	id, err := a.srv.AddTool(
+		strconv.Itoa(auth.ID),
+		req.Name,
+		req.Kind,
+		req.Url,
+		req.Agent,
+		&schema.Credential{
+			Type:  schema.CredentialType(req.Credential.Type),
+			Key:   req.Credential.Key,
+			Value: req.Credential.Val,
+		},
+	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
