@@ -40,8 +40,7 @@ type CredentialType int
 
 const (
 	CredentialHeaderApi CredentialType = iota // header-based API key, like 'X-Api-Key'
-	CredentialDstBearer                       // the specific bearer token
-	CredentialSvcBearer                       // the bearer token using of cagent server
+	CredentialBearer                          // the specific bearer token
 )
 
 type HashInfo struct {

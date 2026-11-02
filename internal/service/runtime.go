@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/hjhsamuel/agent/api/common"
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"github.com/hjhsamuel/agent/internal/toolx"
+	"github.com/hjhsamuel/agent/pkg/token"
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"google.golang.org/adk/v2/agent"
@@ -108,9 +112,9 @@ func (s *Service) getAgentTree() (*AgentGroup, error) {
 }
 
 func (s *Service) buildAgent(
-	user string,
+	user *common.Auth,
 	cfg *AgentGroup,
-	agentTool map[bson.ObjectID]map[schema.ToolType][]string,
+	agentTool map[bson.ObjectID]map[schema.ToolType][]*schema.Tool,
 	llmModel model.LLM,
 ) (agent.Agent, error) {
 	// Stable ordering preserves the prompt prefix across runner rebuilds.
@@ -130,15 +134,23 @@ func (s *Service) buildAgent(
 		skill tool.Toolset
 	)
 	if v, ok := agentTool[cfg.ID]; ok {
-		// TODO
-		// 暂时使用 header api 方式，后续支持多种认证模式
-		for kind, paths := range v {
+		for kind, vs := range v {
 			switch kind {
 			case schema.ToolMcp:
-				mcps = toolx.GetMcp(auth.APIKey("X-User_ID", user), paths...)
+				for _, item := range vs {
+					cred := s.getCredentialProvider(user, item.Credential)
+					mcps = append(mcps, toolx.GetMcp(cred, item.Url)...)
+				}
 			case schema.ToolA2A:
-				a2as = toolx.GetA2A(auth.APIKey("X-User_ID", user), paths...)
+				for _, item := range vs {
+					cred := s.getCredentialProvider(user, item.Credential)
+					a2as = append(a2as, toolx.GetA2A(cred, item.Url)...)
+				}
 			case schema.ToolSkill:
+				paths := make([]string, 0, len(vs))
+				for _, item := range vs {
+					paths = append(paths, item.Name)
+				}
 				skill = toolx.GetSkills(paths...)
 			default:
 				continue
@@ -157,6 +169,34 @@ func (s *Service) buildAgent(
 		Toolsets:    mcps,
 		Model:       llmModel,
 	})
+}
+
+func (s *Service) getCredentialProvider(user *common.Auth, credential *schema.Credential) auth.CredentialProvider {
+	switch credential.Type {
+	case schema.CredentialHeaderApi:
+		if credential.Value == "" {
+			return auth.APIKey(credential.Key, strconv.Itoa(user.ID))
+		} else {
+			return auth.APIKey(credential.Key, credential.Value)
+		}
+	case schema.CredentialBearer:
+		if credential.Value == "" {
+			if user.Token == "" {
+				tk, _ := token.Generate(&common.Auth{
+					ID: user.ID,
+					RegisteredClaims: jwt.RegisteredClaims{
+						ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24)),
+					},
+				}, common.GetTokenSalt())
+				user.Token = tk
+			}
+			return auth.StaticToken(user.Token)
+		} else {
+			return auth.StaticToken(credential.Value)
+		}
+	default:
+		return auth.APIKey("X-User_ID", strconv.Itoa(user.ID))
+	}
 }
 
 func (s *Service) buildRunner(obj *schema.Session) (*Runner, error) {
@@ -179,31 +219,26 @@ func (s *Service) buildRunner(obj *schema.Session) (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	agentTool := make(map[bson.ObjectID]map[schema.ToolType][]string)
+	agentTool := make(map[bson.ObjectID]map[schema.ToolType][]*schema.Tool)
 	for _, item := range tools {
 		if item.Agent == nil {
 			continue
 		}
 		if _, ok := agentTool[*item.Agent]; !ok {
-			agentTool[*item.Agent] = make(map[schema.ToolType][]string)
+			agentTool[*item.Agent] = make(map[schema.ToolType][]*schema.Tool)
 		}
 		if _, ok := agentTool[*item.Agent][item.Type]; !ok {
-			agentTool[*item.Agent][item.Type] = make([]string, 0)
+			agentTool[*item.Agent][item.Type] = make([]*schema.Tool, 0)
 		}
 
-		var path string
-		switch item.Type {
-		case schema.ToolMcp, schema.ToolA2A:
-			path = item.Url
-		case schema.ToolSkill:
-			path = item.Name
-		default:
-			continue
-		}
-		agentTool[*item.Agent][item.Type] = append(agentTool[*item.Agent][item.Type], path)
+		agentTool[*item.Agent][item.Type] = append(agentTool[*item.Agent][item.Type], item)
 	}
 
-	mainAgt, err := s.buildAgent(obj.User, agt, agentTool, llmModel)
+	id, _ := strconv.Atoi(obj.User)
+	user := &common.Auth{
+		ID: id,
+	}
+	mainAgt, err := s.buildAgent(user, agt, agentTool, llmModel)
 	if err != nil {
 		return nil, err
 	}
