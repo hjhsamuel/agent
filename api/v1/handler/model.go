@@ -131,6 +131,8 @@ func (a *Api) GetModelInfo(c *gin.Context) {
 
 	rsp := &entities.GetModelInfoRsp{
 		ID:           obj.ID.Hex(),
+		Url:          obj.Url,
+		Mode:         int(obj.Mode),
 		ContextLimit: obj.Options.ContextLimit,
 		Extra:        obj.Options.Extra,
 		ApiKeys:      make([]*entities.ApiKeyInfo, 0, len(obj.ApiKeys)),

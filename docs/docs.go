@@ -2121,6 +2121,14 @@ const docTemplate = `{
                 "id": {
                     "description": "model id",
                     "type": "string"
+                },
+                "mode": {
+                    "description": "api 模式",
+                    "type": "integer"
+                },
+                "url": {
+                    "description": "url 地址",
+                    "type": "string"
                 }
             }
         },

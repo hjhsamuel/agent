@@ -83,7 +83,7 @@ func (s *Service) GetModelConfigWithApiKeys(id string) (*schema.Model, error) {
 
 	obj, err := s.store.GetModel(
 		bson.M{"_id": modelId},
-		options.FindOne().SetProjection(bson.M{"_id": 1, "options": 1, "api_keys": 1}),
+		options.FindOne().SetProjection(bson.M{"_id": 1, "url": 1, "mode": 1, "options": 1, "api_keys": 1}),
 	)
 	if err != nil {
 		return nil, err

@@ -26,6 +26,8 @@ type GetModelInfoReq struct {
 
 type GetModelInfoRsp struct {
 	ID           string         `json:"id"`            // model id
+	Url          string         `json:"url"`           // url 地址
+	Mode         int            `json:"mode"`          // api 模式
 	ContextLimit int64          `json:"context_limit"` // 上下文大小限制
 	Extra        map[string]any `json:"extra"`         // 额外配置
 	ApiKeys      []*ApiKeyInfo  `json:"api_keys"`      // api key
