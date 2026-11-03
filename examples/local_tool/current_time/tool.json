@@ -1,0 +1,20 @@
+{
+  "name": "current_time",
+  "description": "查询指定时区的当前时间",
+  "parametersJsonSchema": {
+    "type": "object",
+    "properties": {
+      "timezone": {
+        "type": "string",
+        "description": "IANA 时区，例如 Asia/Shanghai 或 UTC"
+      }
+    }
+  },
+  "responseJsonSchema": {
+    "type": "object",
+    "properties": {
+      "time": { "type": "string", "description": "RFC3339 格式时间；成功时返回" },
+      "error": { "type": "string", "description": "输入错误；失败时返回" }
+    }
+  }
+}

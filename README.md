@@ -108,13 +108,32 @@ Enter the JWT cookie name and token in **连接与认证**. Configure a model, i
 
 ## Local tools
 
-A local tool is a trusted executable built for the server's OS and architecture. Package the following files in a ZIP archive (flat or inside one enclosing directory):
+A local tool is a trusted executable built for the server's OS and architecture. The service installs a prebuilt executable; it does not compile source code.
+
+### Archive formats and directory layout
+
+Supported archive extensions are `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.rar`, and `.7z`. Extension matching is case-sensitive; use lowercase extensions. Standalone `.gz`, `.tar.bz2`, and `.tar.xz` files are not supported. The archive filename comes from the HTTP `Content-Disposition` filename when provided, otherwise from the final download URL path; that filename must have a supported extension.
+
+Place `tool.json` and the executable together at the archive root (recommended):
 
 ```text
-echo_tool/
-  tool.json
-  echo_tool       # Windows: echo_tool.exe
+echo_tool.zip
+├── tool.json
+└── echo_tool       # Windows: echo_tool.exe
 ```
+
+Alternatively, the archive root may contain exactly one enclosing directory:
+
+```text
+echo_tool.zip
+└── echo_tool/
+    ├── tool.json
+    └── echo_tool   # Windows: echo_tool.exe
+```
+
+The installer unwraps at most one directory, and only when it is the sole entry at the archive root. It does not recursively search for `tool.json`. For example, a root-level `README.md` alongside an `echo_tool/` directory prevents unwrapping and causes loading to fail unless the required tool files also exist at the root. Additional resources may be included in the tool directory; the executable runs with that directory as its working directory.
+
+### Tool manifest and execution
 
 `tool.json` contains four fields: `name`, `description`, `parametersJsonSchema` (input JSON Schema), and `responseJsonSchema` (output JSON Schema):
 
