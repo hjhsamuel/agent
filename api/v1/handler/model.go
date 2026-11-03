@@ -12,7 +12,7 @@ import (
 
 // AddModel 新增模型。
 // @Summary 新增模型
-// @Description 创建模型配置，成功后返回模型 ID；新建模型默认禁用。
+// @Description 创建模型配置，extra 为可选 JSON 对象；成功后返回模型 ID，新建模型默认禁用。
 // @Tags 模型
 // @Accept json
 // @Produce json
@@ -96,14 +96,14 @@ func (a *Api) GetModels(c *gin.Context) {
 	})
 }
 
-// GetModelInfo 获取模型的 API Key 列表。
-// @Summary 获取模型的 API Key 列表
-// @Description 返回指定模型的 API Key 元信息，不包含 API Key 明文。
+// GetModelInfo 获取模型详情。
+// @Summary 获取模型详情
+// @Description 返回模型 ID、context_limit、extra 和 api_keys，不包含 API Key 明文。
 // @Tags 模型
 // @Produce json
 // @Security CookieAuth
 // @Param id path string true "模型 ID"
-// @Success 200 {object} common.Response{data=[]entities.ApiKeyInfo} "API Key 列表"
+// @Success 200 {object} common.Response{data=entities.GetModelInfoRsp} "模型详情"
 // @Failure 400 {object} common.Response "缺少模型 ID"
 // @Failure 401 {object} common.Response "认证 Cookie 缺失或无效"
 // @Failure 500 {object} common.Response "查询 API Key 失败"
@@ -153,7 +153,7 @@ func (a *Api) GetModelInfo(c *gin.Context) {
 
 // UpdateModel 更新模型配置。
 // @Summary 更新模型配置
-// @Description 按需更新模型字段；reasoning 的 key 和 value 均非空时才更新深度思考配置。
+// @Description 按需更新模型字段；extra 为 JSON 对象，提供时整体替换，空对象清空，省略或 null 保持不变。
 // @Tags 模型
 // @Accept json
 // @Produce json

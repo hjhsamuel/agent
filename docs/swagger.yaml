@@ -3,8 +3,7 @@ definitions:
     properties:
       code:
         type: integer
-      data:
-        type: any
+      data: {}
       message:
         type: string
     type: object
@@ -46,6 +45,10 @@ definitions:
       context_limit:
         description: 上下文限制
         type: integer
+      extra:
+        additionalProperties: {}
+        description: 额外配置
+        type: object
       level:
         description: 智能程度。[0, 4]
         type: integer
@@ -55,9 +58,6 @@ definitions:
       provider:
         description: 供应商名称，仅用于展示，例如：GLM、DeepSeek
         type: string
-      reasoning:
-        $ref: '#/definitions/entities.KeyValue'
-        description: 深度思考
       type:
         description: 模型类型。chat：对话模型；embedding：嵌入模型
         type: string
@@ -83,7 +83,8 @@ definitions:
         description: agent id
         type: string
       credential:
-        $ref: '#/definitions/entities.Credential'
+        allOf:
+        - $ref: '#/definitions/entities.Credential'
         description: 认证信息
       kind:
         description: '类型。0：local tool; 1: a2a; 2: mcp; 3: skill'
@@ -169,6 +170,24 @@ definitions:
         description: 消息索引
         type: integer
     type: object
+  entities.GetModelInfoRsp:
+    properties:
+      api_keys:
+        description: api key
+        items:
+          $ref: '#/definitions/entities.ApiKeyInfo'
+        type: array
+      context_limit:
+        description: 上下文大小限制
+        type: integer
+      extra:
+        additionalProperties: {}
+        description: 额外配置
+        type: object
+      id:
+        description: model id
+        type: string
+    type: object
   entities.GetModelsRsp:
     properties:
       enable:
@@ -224,6 +243,10 @@ definitions:
       creator:
         description: 创建者
         type: string
+      credential:
+        allOf:
+        - $ref: '#/definitions/entities.Credential'
+        description: 认证信息
       id:
         description: tool id
         type: string
@@ -272,13 +295,6 @@ definitions:
         type: string
       content:
         description: 用户补充内容
-        type: string
-    type: object
-  entities.KeyValue:
-    properties:
-      key:
-        type: string
-      value:
         type: string
     type: object
   entities.MessageInfo:
@@ -369,6 +385,10 @@ definitions:
       enable:
         description: 是否可用
         type: boolean
+      extra:
+        additionalProperties: {}
+        description: 额外配置
+        type: object
       level:
         description: 智能程度
         type: integer
@@ -378,9 +398,6 @@ definitions:
       provider:
         description: 供应商
         type: string
-      reasoning:
-        $ref: '#/definitions/entities.KeyValue'
-        description: 深度思考
       url:
         description: 地址
         type: string
@@ -391,7 +408,8 @@ definitions:
         description: agent id
         type: string
       credential:
-        $ref: '#/definitions/entities.Credential'
+        allOf:
+        - $ref: '#/definitions/entities.Credential'
         description: MCP/A2A 认证信息；省略或 null 保持不变，提供对象时整体替换
       name:
         description: 名称
@@ -727,7 +745,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 创建模型配置，成功后返回模型 ID；新建模型默认禁用。
+      description: 创建模型配置，extra 为可选 JSON 对象；成功后返回模型 ID，新建模型默认禁用。
       parameters:
       - description: 模型配置，provider、name、url、type、context_limit 必填
         in: body
@@ -766,7 +784,7 @@ paths:
       - 模型
   /v1/model/{id}:
     get:
-      description: 返回指定模型的 API Key 元信息，不包含 API Key 明文。
+      description: 返回模型 ID、context_limit、extra 和 api_keys，不包含 API Key 明文。
       parameters:
       - description: 模型 ID
         in: path
@@ -777,15 +795,13 @@ paths:
       - application/json
       responses:
         "200":
-          description: API Key 列表
+          description: 模型详情
           schema:
             allOf:
             - $ref: '#/definitions/common.Response'
             - properties:
                 data:
-                  items:
-                    $ref: '#/definitions/entities.ApiKeyInfo'
-                  type: array
+                  $ref: '#/definitions/entities.GetModelInfoRsp'
               type: object
         "400":
           description: 缺少模型 ID
@@ -801,13 +817,13 @@ paths:
             $ref: '#/definitions/common.Response'
       security:
       - CookieAuth: []
-      summary: 获取模型的 API Key 列表
+      summary: 获取模型详情
       tags:
       - 模型
     put:
       consumes:
       - application/json
-      description: 按需更新模型字段；reasoning 的 key 和 value 均非空时才更新深度思考配置。
+      description: 按需更新模型字段；extra 为 JSON 对象，提供时整体替换，空对象清空，省略或 null 保持不变。
       parameters:
       - description: 模型 ID
         in: path
