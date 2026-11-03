@@ -15,6 +15,7 @@ func (s *Service) AddModel(
 	modelName string,
 	baseUrl string,
 	kind string,
+	mode int,
 	contextLimit int64,
 	extra map[string]any,
 	level int,
@@ -24,6 +25,7 @@ func (s *Service) AddModel(
 		Name:     modelName,
 		Url:      baseUrl,
 		Type:     schema.ModelKind(kind),
+		Mode:     schema.ApiKind(mode),
 		Seq:      1,
 		ApiKeys:  make([]*schema.ApiKey, 0),
 		Options: schema.ModelConfig{
@@ -109,6 +111,9 @@ func (s *Service) UpdateModel(id string, req *request.UpdateModelReq) error {
 	}
 	if req.Url != nil {
 		update["url"] = *req.Url
+	}
+	if req.Mode != nil {
+		update["mode"] = *req.Mode
 	}
 	if req.ContextLimit != nil {
 		update["options.context_limit"] = *req.ContextLimit

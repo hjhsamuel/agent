@@ -1839,7 +1839,9 @@
                 "code": {
                     "type": "integer"
                 },
-                "data": {},
+                "data": {
+                    "type": "any"
+                },
                 "message": {
                     "type": "string"
                 }
@@ -1904,10 +1906,16 @@
                 "extra": {
                     "description": "额外配置",
                     "type": "object",
-                    "additionalProperties": {}
+                    "additionalProperties": {
+                        "type": "any"
+                    }
                 },
                 "level": {
                     "description": "智能程度。[0, 4]",
+                    "type": "integer"
+                },
+                "mode": {
+                    "description": "使用的 api 模式。0: chat completion; 1: Responses",
                     "type": "integer"
                 },
                 "name": {
@@ -1955,11 +1963,7 @@
                 },
                 "credential": {
                     "description": "认证信息",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/entities.Credential"
-                        }
-                    ]
+                    "$ref": "#/definitions/entities.Credential"
                 },
                 "kind": {
                     "description": "类型。0：local tool; 1: a2a; 2: mcp; 3: skill",
@@ -2098,7 +2102,9 @@
                 "extra": {
                     "description": "额外配置",
                     "type": "object",
-                    "additionalProperties": {}
+                    "additionalProperties": {
+                        "type": "any"
+                    }
                 },
                 "id": {
                     "description": "model id",
@@ -2186,11 +2192,7 @@
                 },
                 "credential": {
                     "description": "认证信息",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/entities.Credential"
-                        }
-                    ]
+                    "$ref": "#/definitions/entities.Credential"
                 },
                 "id": {
                     "description": "tool id",
@@ -2390,10 +2392,16 @@
                 "extra": {
                     "description": "额外配置",
                     "type": "object",
-                    "additionalProperties": {}
+                    "additionalProperties": {
+                        "type": "any"
+                    }
                 },
                 "level": {
                     "description": "智能程度",
+                    "type": "integer"
+                },
+                "mode": {
+                    "description": "api 模式",
                     "type": "integer"
                 },
                 "name": {
@@ -2419,11 +2427,7 @@
                 },
                 "credential": {
                     "description": "MCP/A2A 认证信息；省略或 null 保持不变，提供对象时整体替换",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/entities.Credential"
-                        }
-                    ]
+                    "$ref": "#/definitions/entities.Credential"
                 },
                 "name": {
                     "description": "名称",

@@ -20,6 +20,7 @@ const files = {
     '/markdown.js':['markdown.js','text/javascript'],
     '/style.css':['style.css','text/css'],
     '/tool-form.js':['tool-form.js', 'text/javascript'],
+    '/model-form.js':['model-form.js', 'text/javascript'],
 };
 http.createServer(async (req,res) => {
   if (req.url.startsWith('/cagent/v1/')) {

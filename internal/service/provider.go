@@ -42,6 +42,7 @@ func (s *Service) selectModel(
 						Name:     m.Name,
 						Url:      m.Url,
 						Type:     m.Type,
+						Mode:     m.Mode,
 						Seq:      m.Seq,
 						ApiKeys:  []*schema.ApiKey{item},
 						Options:  m.Options,
@@ -62,15 +63,18 @@ func (s *Service) newModel(rsp *schema.Model) (model.LLM, error) {
 		return nil, err
 	}
 
-	llmModel, err := openaimodel.NewModel(
-		context.Background(),
-		rsp.Name,
-		&openaimodel.ClientConfig{
-			APIKey:  key,
-			BaseURL: rsp.Url,
-			API:     openaimodel.APIChatCompletions,
-		},
-	)
+	cfg := &openaimodel.ClientConfig{
+		APIKey:  key,
+		BaseURL: rsp.Url,
+	}
+	switch rsp.Mode {
+	case schema.ChatCompletions:
+		cfg.API = openaimodel.APIChatCompletions
+	case schema.Responses:
+		cfg.API = openaimodel.APIResponses
+	}
+
+	llmModel, err := openaimodel.NewModel(context.Background(), rsp.Name, cfg)
 	if err != nil {
 		return nil, err
 	}

@@ -17,12 +17,20 @@ const (
 
 const ModelCacheTTL = time.Minute * 5
 
+type ApiKind int
+
+const (
+	ChatCompletions ApiKind = iota
+	Responses
+)
+
 type Model struct {
 	ID       bson.ObjectID `bson:"_id,omitempty"`
 	Provider string        `bson:"provider"` // 供应商名称
 	Name     string        `bson:"name"`     // 模型名称
 	Url      string        `bson:"url"`
 	Type     ModelKind     `bson:"type"`
+	Mode     ApiKind       `bson:"mode"` // 使用的 api 请求类型
 	Seq      int64         `bson:"seq"`
 	ApiKeys  []*ApiKey     `bson:"api_keys"`
 	Options  ModelConfig   `bson:"options"`

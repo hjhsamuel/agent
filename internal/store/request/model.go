@@ -19,6 +19,7 @@ type UpdateModelReq struct {
 	Provider     *string
 	Name         *string
 	Url          *string
+	Mode         *int
 	ContextLimit *int64
 	Extra        *map[string]any
 	Enable       *bool

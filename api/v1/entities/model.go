@@ -5,6 +5,7 @@ type AddModelReq struct {
 	Name         string         `json:"name"`          // 模型名称，例如：glm-5.3，deepseek-v4-pro
 	Url          string         `json:"url"`           // 地址
 	Type         string         `json:"type"`          // 模型类型。chat：对话模型；embedding：嵌入模型
+	Mode         int            `json:"mode"`          // 使用的 api 模式。0: chat completion; 1: Responses
 	ContextLimit int64          `json:"context_limit"` // 上下文限制
 	Extra        map[string]any `json:"extra"`         // 额外配置
 	Level        int            `json:"level"`         // 智能程度。[0, 4]
@@ -43,6 +44,7 @@ type UpdateModelReq struct {
 	Provider     *string         `json:"provider"`               // 供应商
 	Name         *string         `json:"name"`                   // 模型名称
 	Url          *string         `json:"url"`                    // 地址
+	Mode         *int            `json:"mode"`                   // api 模式
 	Enable       *bool           `json:"enable"`                 // 是否可用
 	ContextLimit *int64          `json:"context_limit"`          // 上下文限制
 	Extra        *map[string]any `json:"extra"`                  // 额外配置

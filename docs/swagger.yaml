@@ -3,7 +3,8 @@ definitions:
     properties:
       code:
         type: integer
-      data: {}
+      data:
+        type: any
       message:
         type: string
     type: object
@@ -46,11 +47,15 @@ definitions:
         description: 上下文限制
         type: integer
       extra:
-        additionalProperties: {}
+        additionalProperties:
+          type: any
         description: 额外配置
         type: object
       level:
         description: 智能程度。[0, 4]
+        type: integer
+      mode:
+        description: '使用的 api 模式。0: chat completion; 1: Responses'
         type: integer
       name:
         description: 模型名称，例如：glm-5.3，deepseek-v4-pro
@@ -83,8 +88,7 @@ definitions:
         description: agent id
         type: string
       credential:
-        allOf:
-        - $ref: '#/definitions/entities.Credential'
+        $ref: '#/definitions/entities.Credential'
         description: 认证信息
       kind:
         description: '类型。0：local tool; 1: a2a; 2: mcp; 3: skill'
@@ -181,7 +185,8 @@ definitions:
         description: 上下文大小限制
         type: integer
       extra:
-        additionalProperties: {}
+        additionalProperties:
+          type: any
         description: 额外配置
         type: object
       id:
@@ -244,8 +249,7 @@ definitions:
         description: 创建者
         type: string
       credential:
-        allOf:
-        - $ref: '#/definitions/entities.Credential'
+        $ref: '#/definitions/entities.Credential'
         description: 认证信息
       id:
         description: tool id
@@ -386,11 +390,15 @@ definitions:
         description: 是否可用
         type: boolean
       extra:
-        additionalProperties: {}
+        additionalProperties:
+          type: any
         description: 额外配置
         type: object
       level:
         description: 智能程度
+        type: integer
+      mode:
+        description: api 模式
         type: integer
       name:
         description: 模型名称
@@ -408,8 +416,7 @@ definitions:
         description: agent id
         type: string
       credential:
-        allOf:
-        - $ref: '#/definitions/entities.Credential'
+        $ref: '#/definitions/entities.Credential'
         description: MCP/A2A 认证信息；省略或 null 保持不变，提供对象时整体替换
       name:
         description: 名称
