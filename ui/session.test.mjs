@@ -6,7 +6,7 @@ import {readFile} from 'node:fs/promises';
 const code=(await readFile(new URL('./dist/app.js',import.meta.url),'utf8')).replace("import './admin.js';",'').replace("import {renderMarkdown} from './markdown.js';",'').replace(/\nstart\(\);/,'');
 function setup(status,pages){
  const calls=[],streams=[],timers=[],elements=new Map();
- const element=()=>({children:[],scrollTop:0,get scrollHeight(){return this.children.length*100;},textContent:'',value:'',append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},querySelector(){return null;},addEventListener(){},setAttribute(){}});
+ const element=()=>({children:[],scrollTop:0,get scrollHeight(){return this.children.length*100;},textContent:'',value:'',append(...items){for(const item of items)item.parentElement=this;this.children.push(...items);},replaceChildren(...items){this.children=items;},querySelector(){return null;},addEventListener(){},setAttribute(){},before(item){item.parentElement=this.parentElement;this.parentElement.children.splice(this.parentElement.children.indexOf(this),0,item);},after(item){item.parentElement=this.parentElement;this.parentElement.children.splice(this.parentElement.children.indexOf(this)+1,0,item);}});
  const context=vm.createContext({renderMarkdown,document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element},URLSearchParams,BigInt,setTimeout:(fn,delay)=>{timers.push({fn,delay});return 1;},clearTimeout(){},fetch:async url=>{
   calls.push(url);let data;
   if(url.endsWith('/abc'))data={state:status};
@@ -112,4 +112,43 @@ test('existing session init reconciles completion when end was missed',async()=>
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(s.streams[0].closed,true);
  assert.equal(s.timers.length,0);
+});
+
+
+test('new reasoning uses a separate block and leaves previous thoughts collapsed',async()=>{
+ const s=setup(1);await vm.runInContext("open('abc')",s.context);
+ const stream=s.streams[0];
+ stream.handlers.reasoning({data:'first thought',lastEventId:'1'});
+ const first=vm.runInContext('reasoning',s.context);
+ assert.equal(first.details.open,true);
+ stream.handlers.content({data:'first answer',lastEventId:'2'});
+ assert.equal(first.details.open,false);
+ const firstAnswer=vm.runInContext('answer',s.context);
+ stream.handlers.reasoning({data:'new thought',lastEventId:'3'});
+ const second=vm.runInContext('reasoning',s.context);
+ assert.notEqual(second,first);
+ const box=firstAnswer.box;
+ assert.ok(box.children.indexOf(second.details)>box.children.indexOf(firstAnswer));
+ assert.ok(box.children.indexOf(second.details)<box.children.indexOf(vm.runInContext('answer',s.context)));
+ stream.handlers.content({data:'',lastEventId:'3'});
+ assert.equal(second.details.open,true);
+ assert.equal(second.markdown,'new thought');
+ assert.equal(first.markdown,'first thought');
+ assert.equal(first.details.open,false);
+ stream.handlers.reasoning({data:' continued',lastEventId:'4'});
+ assert.equal(vm.runInContext('reasoning',s.context),second);
+ assert.equal(second.markdown,'new thought continued');
+ assert.equal(first.details.open,false);
+ stream.handlers.content({data:' more answer',lastEventId:'5'});
+ assert.equal(first.details.open,false);
+ assert.equal(second.details.open,false);
+ assert.equal(firstAnswer.markdown,'first answer');
+ assert.equal(vm.runInContext('answer.markdown',s.context),' more answer');
+});
+
+test('empty content events do not collapse active reasoning',async()=>{
+ const s=setup(1);await vm.runInContext("open('abc')",s.context);
+ s.streams[0].handlers.reasoning({data:'thinking',lastEventId:'1'});
+ s.streams[0].handlers.content({data:'',lastEventId:'2'});
+ assert.equal(vm.runInContext('reasoning.details.open',s.context),true);
 });

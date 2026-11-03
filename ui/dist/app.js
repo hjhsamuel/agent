@@ -85,8 +85,17 @@ function subscribe(id,version,onReady){
     current=event.data;connected=true;state(busy?'正在回复…':'已连接');$('delete').hidden=false;onReady?.();
     if(id)checkState(version).catch(error=>{if(version===generation)notice(error.message);});
   });
-  listen('content',event=>{const follow=nearBottom();busy=true;state('正在回复…');answer??=message('assistant');answer.markdown+=event.data;answer.innerHTML=renderMarkdown(answer.markdown);scroll(follow);});
-  listen('reasoning',event=>{const follow=nearBottom();busy=true;state('正在思考…');answer??=message('assistant');if(!reasoning){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='思考过程';reasoning=document.createElement('div');reasoning.className='markdown-preview message-content';reasoning.markdown='';details.append(summary,reasoning);answer.before(details);}reasoning.markdown+=event.data;reasoning.innerHTML=renderMarkdown(reasoning.markdown);scroll(follow);});
+  listen('content',event=>{if(!event.data)return;const follow=nearBottom();if(reasoning){reasoning.details.open=false;reasoning=undefined;}busy=true;state('正在回复…');answer??=message('assistant');answer.markdown+=event.data;answer.innerHTML=renderMarkdown(answer.markdown);scroll(follow);});
+  listen('reasoning',event=>{if(!event.data)return;const follow=nearBottom();busy=true;state('正在思考…');answer??=message('assistant');if(!reasoning){
+    // Keep each reasoning block next to the content it precedes, in stream order.
+    if(answer.markdown){
+      const next=document.createElement('div');
+      next.className='markdown-preview message-content';next.markdown='';next.box=answer.box;
+      answer.after(next);
+      if(thinkingIndicator?.message===answer)thinkingIndicator.message=next;
+      answer=next;
+    }
+    const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='思考过程';reasoning=document.createElement('div');reasoning.className='markdown-preview message-content';reasoning.markdown='';reasoning.details=details;details.append(summary,reasoning);answer.before(details);}reasoning.details.open=true;reasoning.markdown+=event.data;reasoning.innerHTML=renderMarkdown(reasoning.markdown);scroll(follow);});
   listen('title',event=>{
     $('title').textContent=event.data;streamedTitles.set(current,event.data);
     if(!sessionItems.some(item=>item.id===current))sessionItems.unshift({id:current,name:event.data,state:1});

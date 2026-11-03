@@ -140,7 +140,7 @@ func (s *Service) ExtractSessionTopic(ctx context.Context, content string) (stri
 		}
 
 		for _, elem := range item.Content.Parts {
-			if elem == nil || elem.Text == "" {
+			if elem == nil || elem.Thought || elem.Text == "" {
 				continue
 			}
 			b.WriteString(elem.Text)
