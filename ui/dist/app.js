@@ -19,7 +19,7 @@ let historyMore=false, historyLoading;
 const api='/cagent/v1/session';
 function notice(message=''){ $('notice').textContent=message; $('notice').hidden=!message; }
 function state(text){
-  $('status').textContent=text; $('send').disabled=busy||(!!current&&!connected);
+  $('status').textContent=text; $('send').disabled=busy;
   const running=busy&&['正在回复…','正在思考…'].includes(text);
   if(thinkingIndicator)thinkingIndicator.hidden=!running;
   if(running){
@@ -60,7 +60,7 @@ async function checkState(version){
   const nextVersion=++generation;
   busy=true;connected=false;state('正在加载最近消息…');
   try{await history(id,nextVersion);if(nextVersion!==generation)return;
-    busy=false;connected=true;answer=reasoning=undefined;$('inputs').replaceChildren();state('已完成');
+    busy=false;connected=false;answer=reasoning=undefined;$('inputs').replaceChildren();state('已完成');
     await sessions();
   }catch(error){if(nextVersion===generation){notice(error.message);state('历史加载失败，请重新打开会话');}}
 }
@@ -77,7 +77,7 @@ function subscribe(id,version,onReady){
   source?.close();connected=false;state('正在连接…');
   const stream=new EventSource(api+'/stream?'+new URLSearchParams({...(id?{id}:{}),seq}),{withCredentials:true});source=stream;
   const listen=(type,fn)=>stream.addEventListener(type,event=>{
-    if(version!==generation)return;
+    if(version!==generation||source!==stream)return;
     if(event.lastEventId){if(seq && BigInt(event.lastEventId)<=BigInt(seq))return;seq=event.lastEventId;}
     fn(event);
   });
@@ -104,9 +104,9 @@ function subscribe(id,version,onReady){
   listen('hitl',event=>{try{input(JSON.parse(event.data),version);}catch{notice('无法解析补充输入请求。');}});
   listen('end',()=>{answer=reasoning=undefined;checkState(version).catch(error=>notice(error.message));});
   stream.addEventListener('error',event=>{
-    if(version!==generation)return;
+    if(version!==generation||source!==stream)return;
     if(pendingConnection){const reject=pendingConnection;pendingConnection=undefined;stream.close();source=undefined;reject(Error('连接失败，请检查认证和网络后重试。'));return;}
-    if(typeof event.data==='string'){notice(event.data);busy=false;answer=reasoning=undefined;state('回复失败');return;}
+    if(typeof event.data==='string'){stream.close();source=undefined;connected=false;notice(event.data);busy=false;answer=reasoning=undefined;state('回复失败');return;}
     stream.close();connected=false;state('连接已断开');notice('连接已断开，3 秒后尝试恢复。认证失败时请更新 JWT。');
     if(current)setTimeout(()=>{if(version===generation)subscribe(current,version);},3000);
   });
@@ -149,7 +149,7 @@ async function open(id='',title='新对话',status=2){
   $('title').textContent=streamedTitles.get(id)??(title||'未命名对话');$('messages').replaceChildren();$('inputs').replaceChildren();$('delete').hidden=!id;notice();state('正在加载…');
   try{
     if(id){const info=await request('/'+id);if(version!==generation)return;
-      if(info.state===2){await history(id,version);if(version!==generation)return;busy=false;connected=true;state('已完成');return;}
+      if(info.state===2){await history(id,version);if(version!==generation)return;busy=false;connected=false;state('已完成');return;}
       busy=true;const pending=await request('/'+id+'/input');if(version!==generation)return;pending.forEach(item=>input(item,version));
     }
     if(!id){busy=false;state('请输入消息开始新对话');return;}
@@ -157,15 +157,15 @@ async function open(id='',title='新对话',status=2){
   }catch(error){if(version===generation){notice(error.message);state('加载失败');}}
 }
 $('composer').onsubmit=async event=>{
-  event.preventDefault();const content=$('prompt').value.trim();if(!content||busy||(!!current&&!connected))return;
-  const version=generation;transcriptEpoch++;historyMore=false;historyLoading=undefined;busy=true;answer=reasoning=undefined;state('正在发送…');notice();
+  event.preventDefault();const content=$('prompt').value.trim();if(!content||busy)return;
+  const version=++generation;source?.close();source=undefined;connected=false;transcriptEpoch++;historyMore=false;historyLoading=undefined;busy=true;answer=reasoning=undefined;state('正在发送…');notice();
   const sent=message('user',content);$('prompt').value='';$('messages').scrollTop=$('messages').scrollHeight;
   try{
     if(!current){await new Promise((resolve,reject)=>{pendingConnection=reject;subscribe('',version,()=>{pendingConnection=undefined;resolve();});});if(version!==generation)return;}
     await request('/'+current+'/message','POST',{content});if(version!==generation)return;
-    if(!source){$('messages').replaceChildren();message('user',content);seq='';subscribe(current,version);}
+    if(!source)subscribe(current,version);
     state('正在回复…');}
-  catch(error){if(version===generation){sent.parentElement.remove();$('prompt').value=content;busy=false;state('发送失败');notice(error.message);}}
+  catch(error){if(version===generation){source?.close();source=undefined;connected=false;pendingConnection=undefined;sent.box.remove();$('prompt').value=content;busy=false;state('发送失败');notice(error.message);}}
 };
 $('prompt').onkeydown=event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();$('composer').requestSubmit();}};
 $('new').onclick=()=>open();$('more').onclick=()=>sessions(true).catch(error=>notice(error.message));

@@ -152,3 +152,29 @@ test('empty content events do not collapse active reasoning',async()=>{
  s.streams[0].handlers.content({data:'',lastEventId:'2'});
  assert.equal(vm.runInContext('reasoning.details.open',s.context),true);
 });
+
+
+test('each turn creates a fresh stream and closes it on completion',async()=>{
+ const s=setup(2);await vm.runInContext("open('abc')",s.context);
+ assert.equal(vm.runInContext('connected',s.context),false);
+ assert.equal(vm.runInContext("$('send').disabled",s.context),false);
+ for(let turn=0;turn<2;turn++){
+  s.setStatus(1);
+  await vm.runInContext("$('prompt').value='hello';$('composer').onsubmit({preventDefault(){}})",s.context);
+  assert.equal(s.streams.length,turn+1);
+  const stream=s.streams[turn];
+  assert.ok(!stream.closed);
+  assert.equal(vm.runInContext("$('messages').children[0].children[1].markdown",s.context),'saved answer');
+  stream.handlers.init({data:'abc'});
+  stream.handlers.content({data:'answer',lastEventId:String(turn*2+1)});
+  s.setStatus(2);
+  stream.handlers.end({data:'',lastEventId:String(turn*2+2)});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(stream.closed,true);
+  assert.equal(vm.runInContext('source',s.context),undefined);
+  assert.equal(vm.runInContext('connected',s.context),false);
+  assert.equal(vm.runInContext("$('send').disabled",s.context),false);
+  stream.handlers.error({});
+  assert.equal(s.timers.length,0);
+ }
+});
