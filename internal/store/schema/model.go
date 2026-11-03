@@ -31,8 +31,8 @@ type Model struct {
 }
 
 type ModelConfig struct {
-	ContextLimit int64    `bson:"context_limit"`
-	Reasoning    *KeyPair `bson:"reasoning"`
+	ContextLimit int64          `bson:"context_limit"`
+	Extra        map[string]any `bson:"extra"`
 }
 
 type ApiKey struct {

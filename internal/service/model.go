@@ -16,8 +16,7 @@ func (s *Service) AddModel(
 	baseUrl string,
 	kind string,
 	contextLimit int64,
-	reasonKey string,
-	reasonValue string,
+	extra map[string]any,
 	level int,
 ) (string, error) {
 	modelObj := &schema.Model{
@@ -29,15 +28,10 @@ func (s *Service) AddModel(
 		ApiKeys:  make([]*schema.ApiKey, 0),
 		Options: schema.ModelConfig{
 			ContextLimit: contextLimit,
+			Extra:        extra,
 		},
 		Enable: false,
 		Level:  schema.ModelLevel(level),
-	}
-	if reasonKey != "" && reasonValue != "" {
-		modelObj.Options.Reasoning = &schema.KeyPair{
-			Key: reasonKey,
-			Val: reasonValue,
-		}
 	}
 
 	modelId, err := s.store.AddModel(modelObj)
@@ -79,7 +73,7 @@ func (s *Service) AddApiKey(id string, name string, key string, weight int64) (i
 	return s.store.AddApiKey(modelId, obj)
 }
 
-func (s *Service) GetApiKeys(id string) ([]*schema.ApiKey, error) {
+func (s *Service) GetModelConfigWithApiKeys(id string) (*schema.Model, error) {
 	modelId, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, err
@@ -87,13 +81,13 @@ func (s *Service) GetApiKeys(id string) ([]*schema.ApiKey, error) {
 
 	obj, err := s.store.GetModel(
 		bson.M{"_id": modelId},
-		options.FindOne().SetProjection(bson.M{"api_keys": 1}),
+		options.FindOne().SetProjection(bson.M{"_id": 1, "options": 1, "api_keys": 1}),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	return obj.ApiKeys, nil
+	return obj, nil
 }
 
 func (s *Service) UpdateModel(id string, req *request.UpdateModelReq) error {
@@ -119,11 +113,8 @@ func (s *Service) UpdateModel(id string, req *request.UpdateModelReq) error {
 	if req.ContextLimit != nil {
 		update["options.context_limit"] = *req.ContextLimit
 	}
-	if req.Reasoning != nil {
-		update["options.reasoning"] = &schema.KeyPair{
-			Key: req.Reasoning.Key,
-			Val: req.Reasoning.Value,
-		}
+	if req.Extra != nil {
+		update["options.extra"] = *req.Extra
 	}
 	if req.Enable != nil {
 		update["enable"] = *req.Enable

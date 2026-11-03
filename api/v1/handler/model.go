@@ -42,17 +42,7 @@ func (a *Api) AddModel(c *gin.Context) {
 		return
 	}
 
-	var (
-		reasoningKey string
-		reasoningVal string
-	)
-	if req.Reasoning != nil {
-		reasoningKey = req.Reasoning.Key
-		reasoningVal = req.Reasoning.Value
-	}
-
-	modelId, err := a.srv.AddModel(req.Provider, req.Name, req.Url, req.Type, req.ContextLimit,
-		reasoningKey, reasoningVal, req.Level)
+	modelId, err := a.srv.AddModel(req.Provider, req.Name, req.Url, req.Type, req.ContextLimit, req.Extra, req.Level)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
@@ -130,7 +120,7 @@ func (a *Api) GetModelInfo(c *gin.Context) {
 		return
 	}
 
-	objs, err := a.srv.GetApiKeys(req.ID)
+	obj, err := a.srv.GetModelConfigWithApiKeys(req.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &common.Response{
 			Code:    http.StatusInternalServerError,
@@ -139,9 +129,14 @@ func (a *Api) GetModelInfo(c *gin.Context) {
 		return
 	}
 
-	rsp := make([]*entities.ApiKeyInfo, 0, len(objs))
-	for _, item := range objs {
-		rsp = append(rsp, &entities.ApiKeyInfo{
+	rsp := &entities.GetModelInfoRsp{
+		ID:           obj.ID.Hex(),
+		ContextLimit: obj.Options.ContextLimit,
+		Extra:        obj.Options.Extra,
+		ApiKeys:      make([]*entities.ApiKeyInfo, 0, len(obj.ApiKeys)),
+	}
+	for _, item := range obj.ApiKeys {
+		rsp.ApiKeys = append(rsp.ApiKeys, &entities.ApiKeyInfo{
 			ID:      item.ID,
 			Name:    item.Name,
 			Version: item.Version,
@@ -188,17 +183,9 @@ func (a *Api) UpdateModel(c *gin.Context) {
 		Name:         req.Name,
 		Url:          req.Url,
 		ContextLimit: req.ContextLimit,
+		Extra:        req.Extra,
 		Enable:       req.Enable,
 		Level:        req.Level,
-	}
-	if req.Reasoning != nil && req.Reasoning.Key != "" && req.Reasoning.Value != "" {
-		update.Reasoning = &struct {
-			Key   string
-			Value string
-		}{
-			Key:   req.Reasoning.Key,
-			Value: req.Reasoning.Value,
-		}
 	}
 
 	err := a.srv.UpdateModel(req.ID, update)

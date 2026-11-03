@@ -20,12 +20,9 @@ type UpdateModelReq struct {
 	Name         *string
 	Url          *string
 	ContextLimit *int64
-	Reasoning    *struct {
-		Key   string
-		Value string
-	}
-	Enable *bool
-	Level  *int
+	Extra        *map[string]any
+	Enable       *bool
+	Level        *int
 }
 
 type UpdateApiKeyReq struct {
