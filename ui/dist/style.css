@@ -22,3 +22,6 @@
 .message.assistant{position:relative;margin-bottom:46px}.thinking-indicator{position:absolute;bottom:-30px;left:0;display:flex;align-items:center;gap:8px;color:#64748b;font-size:13px;line-height:22px}.thinking-indicator::before{content:'';width:7px;height:7px;border-radius:50%;background:#78958a;animation:thinking-pulse 1.5s ease-in-out infinite}@keyframes thinking-pulse{50%{opacity:.3}}@media(prefers-reduced-motion:reduce){.thinking-indicator::before{animation:none}}
 
 .json-config{font-family:monospace;min-height:180px;resize:vertical;tab-size:2}
+
+.message.supplement{background:#fff8e8;border-color:#dfc88e}.message.supplement>strong{color:#856226}
+#inputs{max-height:45dvh}#inputs form{max-width:800px;margin:8px auto;border:1px solid #dfc88e;background:#fffaf0;padding:18px}#inputs textarea{background:white;border:1px solid #d4ddcf;border-radius:8px;padding:10px;min-height:90px}#inputs textarea:focus-visible{outline:2px solid #856226}#inputs select{width:auto;margin-bottom:12px}.input-hint{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0;max-height:180px;overflow:auto}.input-hint pre{margin:0;white-space:pre;overflow:auto;font-family:Consolas,monospace}#inputs [role=alert]{color:#a33b24}

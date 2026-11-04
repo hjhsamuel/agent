@@ -70,6 +70,8 @@ const (
 
 	// RoleError 服务错误专用，不是模型内部角色
 	RoleError Role = "error"
+	// RoleInputRequired 补充输入
+	RoleInputRequired Role = "input_required"
 )
 
 type Usage struct {

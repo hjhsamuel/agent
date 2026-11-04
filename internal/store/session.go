@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -172,8 +171,8 @@ func (d *Store) SubmitWaitInput(user string, id bson.ObjectID, callID, content s
 			messages = append(messages, &schema.Message{
 				Session:   id,
 				Turn:      obj.TurnSeq - 1,
-				Role:      schema.RoleUser,
-				Content:   fmt.Sprintf("> %s \n\n%s", input.Hint, input.Content),
+				Role:      schema.RoleInputRequired,
+				Content:   input.Content,
 				CreatedAt: input.UpdatedAt,
 			})
 		}

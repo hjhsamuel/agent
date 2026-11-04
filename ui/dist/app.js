@@ -42,11 +42,18 @@ async function request(path='',method='GET',body){
   if(!response.ok||result.code!==200) throw Error(response.status===401?'认证失败，请在「连接与认证」中设置有效 JWT。':result.message||'请求失败');
   return result.data;
 }
+function renderSupplement(target,content){
+  let value=content;
+  if(typeof value==='string'){try{value=JSON.parse(value);}catch{}}
+  if(value!==null&&typeof value==='object'){
+    const pre=document.createElement('pre');pre.textContent=JSON.stringify(value,null,2);target.append(pre);
+  }else target.textContent=typeof content==='string'?content:String(content??'');
+}
 function message(role,content=''){
   $('messages').querySelector('.welcome')?.remove();
-  const box=document.createElement('article');box.className='message '+(role==='user'?'user':'assistant');
-  const name=document.createElement('strong');name.textContent=role==='user'?'你':'CAgent';
-  const text=document.createElement('div');text.className='markdown-preview message-content';text.markdown=content;text.innerHTML=renderMarkdown(content);text.box=box;box.append(name,text);$('messages').append(box);return text;
+  const box=document.createElement('article');box.className='message '+(role==='input_required'?'user supplement':role==='user'?'user':'assistant');
+  const name=document.createElement('strong');name.textContent=role==='input_required'?'你 · 补充输入':role==='user'?'你':'CAgent';
+  const text=document.createElement('div');text.className='markdown-preview message-content';text.markdown=content;if(role==='input_required')renderSupplement(text,content);else text.innerHTML=renderMarkdown(content);text.box=box;box.append(name,text);$('messages').append(box);return text;
 }
 function nearBottom(){const el=$('messages');return el.scrollHeight-el.scrollTop-el.clientHeight<220;}
 function scroll(follow){if(follow){const el=$('messages');el.scrollTop=el.scrollHeight;}}
@@ -117,8 +124,23 @@ function input(item,version){
   if([...$('inputs').children].some(el=>el.dataset.id===item.id))return;
   busy=true;state('等待补充输入');
   const form=document.createElement('form');form.dataset.id=item.id;
-  const hint=document.createElement('p');hint.textContent=item.content;const field=document.createElement('input');field.required=true;field.setAttribute('aria-label','补充内容');const button=document.createElement('button');button.textContent='提交补充';form.append(hint,field,button);
-  form.onsubmit=async event=>{event.preventDefault();button.disabled=true;try{await request('/'+current+'/input','POST',{call_id:item.id,content:field.value});if(version!==generation)return;form.remove();state('正在回复…');}catch(error){notice(error.message);button.disabled=false;}};
+  const title=document.createElement('strong');title.textContent='需要补充信息';
+  const hint=document.createElement('div');hint.className='input-hint';renderSupplement(hint,item.hint??item.content);
+  const field=document.createElement('textarea');field.required=true;field.rows=4;field.setAttribute('aria-label','补充内容');field.placeholder='输入补充信息，或粘贴 JSON / JSON Schema';
+  const mode=document.createElement('select');mode.setAttribute('aria-label','补充内容格式');
+  for(const [value,text] of [['text','文本'],['json','JSON / JSON Schema']]){const option=document.createElement('option');option.value=value;option.textContent=text;mode.append(option);}
+  const error=document.createElement('p');error.setAttribute('role','alert');error.hidden=true;
+  const button=document.createElement('button');button.textContent='提交补充';form.append(title,hint,mode,field,error,button);
+  form.onsubmit=async event=>{
+    event.preventDefault();if(button.disabled||version!==generation)return;
+    error.hidden=true;let content=field.value;
+    if(!content.trim())return;
+    if(mode.value==='json'){try{content=JSON.stringify(JSON.parse(content));}catch{error.textContent='JSON 格式有误，请检查引号、逗号和括号。';error.hidden=false;return;}}
+    button.disabled=true;
+    try{await request('/'+current+'/input','POST',{call_id:item.id,content});if(version!==generation)return;
+      message('input_required',content);form.remove();answer=reasoning=undefined;state($('inputs').children.length?'等待补充输入':'正在回复…');
+    }catch(failure){if(version!==generation)return;error.textContent=failure.message;error.hidden=false;button.disabled=false;}
+  };
   $('inputs').append(form);
 }
 async function history(id,version,older=false){
