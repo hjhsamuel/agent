@@ -67,8 +67,8 @@ func (m *RingBufferManager) AcquireProducer(ctx context.Context, id string) (*Ri
 // context.Background for an explicitly closed consumer. Close the old consumer
 // before reconnecting with the last sequence received by the client.
 // A retained sequence resumes at the following chunk; a missing
-// sequence resumes at the newest retained SSEChunkTypeEnd, including the marker.
-// If no marker is retained, Next waits for one. Zero starts at the oldest
+// sequence replays from the oldest retained chunk.
+// If no data is retained, Next waits for new chunks. Zero starts at the oldest
 // retained chunk.
 // A disconnected consumer can be replaced while the buffer is retained.
 func (m *RingBufferManager) AcquireConsumer(ctx context.Context, id string, lastSequence uint64) (*RingBufferConsumer, error) {
@@ -156,7 +156,7 @@ func (m *RingBufferManager) Push(producer *RingBufferProducer, chunk SSEChunk) (
 	if chunk.Type == SSEChunkTypeEnd && len(chunk.Data) != 0 {
 		return 0, ErrRingBufferInvalidChunk
 	}
-	
+
 	chunk.Data = strings.Clone(chunk.Data)
 	sequence, ok := lease.buffer.push(chunk, m.capacity)
 	if !ok {

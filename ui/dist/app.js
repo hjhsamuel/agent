@@ -76,9 +76,11 @@ async function sessions(more=false){
 function subscribe(id,version,onReady){
   source?.close();connected=false;state('正在连接…');
   const stream=new EventSource(api+'/stream?'+new URLSearchParams({...(id?{id}:{}),seq}),{withCredentials:true});source=stream;
+  // The server resolves the resume cursor; a rebuilt buffer may restart IDs.
+  let receivedSequence=false;
   const listen=(type,fn)=>stream.addEventListener(type,event=>{
     if(version!==generation||source!==stream)return;
-    if(event.lastEventId){if(seq && BigInt(event.lastEventId)<=BigInt(seq))return;seq=event.lastEventId;}
+    if(type!=='init'&&event.lastEventId){if(receivedSequence && BigInt(event.lastEventId)<=BigInt(seq))return;seq=event.lastEventId;receivedSequence=true;}
     fn(event);
   });
   listen('init',event=>{
@@ -176,3 +178,4 @@ async function start(){try{await sessions();await open();}catch(error){notice(er
 start();
 
 import './admin.js';
+

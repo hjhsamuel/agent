@@ -178,3 +178,24 @@ test('each turn creates a fresh stream and closes it on completion',async()=>{
   assert.equal(s.timers.length,0);
  }
 });
+
+test('reconnect renders restarted sequence IDs and still deduplicates within the stream',async()=>{
+ const s=setup(1);await vm.runInContext("open('abc')",s.context);
+ const old=s.streams[0];
+ old.handlers.content({data:'previous',lastEventId:'100'});
+ await vm.runInContext("answer=reasoning=undefined;subscribe(current,generation)",s.context);
+ const stream=s.streams[1];
+ assert.ok(stream.url.includes('seq=100'));
+ stream.handlers.init({data:'abc'});
+ stream.handlers.reasoning({data:'new thought',lastEventId:'1'});
+ assert.equal(vm.runInContext('reasoning.markdown',s.context),'new thought');
+ stream.handlers.content({data:'new answer',lastEventId:'2'});
+ stream.handlers.content({data:'duplicate',lastEventId:'2'});
+ old.handlers.content({data:'stale',lastEventId:'101'});
+ assert.equal(vm.runInContext('answer.markdown',s.context),'new answer');
+ assert.equal(vm.runInContext('answer.innerHTML',s.context),'<p>new answer</p>');
+ assert.equal(vm.runInContext('seq',s.context),'2');
+ s.setStatus(2);stream.handlers.end({data:'',lastEventId:'3'});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(stream.closed,true);
+});

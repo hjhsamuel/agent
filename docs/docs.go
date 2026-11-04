@@ -2229,6 +2229,9 @@ const docTemplate = `{
                 "type": {
                     "description": "类型",
                     "type": "integer"
+                },
+                "url": {
+                    "type": "string"
                 }
             }
         },

@@ -10,7 +10,7 @@ type RingBufferConsumer struct {
 	lease        ringBufferLease
 	sequence     uint64 // Cursor fields are protected by lease.reading.
 	reconnecting bool
-	awaitingEnd  bool
+	replaying    bool
 }
 
 // Next returns all currently readable chunks at this consumer's position, waiting
@@ -68,10 +68,10 @@ func (c *RingBufferConsumer) readAvailable() []SSEChunk {
 	var chunk SSEChunk
 	var ok bool
 	if c.reconnecting {
-		if c.awaitingEnd {
-			chunk, ok = c.lease.buffer.latestEnd()
+		if c.replaying {
+			chunk, ok = c.lease.buffer.next(0)
 		} else {
-			chunk, ok, c.awaitingEnd = c.lease.buffer.reconnect(c.sequence)
+			chunk, ok, c.replaying = c.lease.buffer.reconnect(c.sequence)
 		}
 	} else {
 		chunk, ok = c.lease.buffer.next(c.sequence)
@@ -81,7 +81,7 @@ func (c *RingBufferConsumer) readAvailable() []SSEChunk {
 	}
 	chunks := c.lease.buffer.available(chunk)
 	c.sequence = chunks[len(chunks)-1].Sequence
-	c.reconnecting, c.awaitingEnd = false, false
+	c.reconnecting, c.replaying = false, false
 	return chunks
 }
 

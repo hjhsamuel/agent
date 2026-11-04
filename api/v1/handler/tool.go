@@ -185,6 +185,7 @@ func (a *Api) GetToolInfo(c *gin.Context) {
 			Creator:   toolObj.Creator,
 			CreatedAt: toolObj.CreatedAt.Unix(),
 		},
+		Url: toolObj.Url,
 	}
 	if toolObj.Credential != nil {
 		rsp.Credential = &entities.Credential{

@@ -159,7 +159,12 @@ func adkEventFilter(doc *schema.ADKSession, after time.Time) bson.D {
 	return filter
 }
 
-func (d *Store) GetADKSessionEvents(ctx context.Context, doc *schema.ADKSession, after time.Time, limit int) ([]schema.ADKSessionEvent, error) {
+func (d *Store) GetADKSessionEvents(
+	ctx context.Context,
+	doc *schema.ADKSession,
+	after time.Time,
+	limit int,
+) ([]schema.ADKSessionEvent, error) {
 	opts := options.Find().SetSort(bson.D{{Key: "timestamp", Value: -1}, {Key: "sequence", Value: -1}}).
 		SetBatchSize(128)
 	if limit > 0 {
@@ -175,7 +180,14 @@ func (d *Store) GetADKSessionEvents(ctx context.Context, doc *schema.ADKSession,
 	return events, err
 }
 
-func (d *Store) AppendADKSessionEvent(ctx context.Context, doc *schema.ADKSession, event *schema.ADKSessionEvent, appDelta, userDelta, sessionDelta schema.ADKState) error {
+func (d *Store) AppendADKSessionEvent(
+	ctx context.Context,
+	doc *schema.ADKSession,
+	event *schema.ADKSessionEvent,
+	appDelta,
+	userDelta,
+	sessionDelta schema.ADKState,
+) error {
 	return d.withSessionTransaction(ctx, func(tx context.Context) error {
 		// Version, rather than wall-clock time, also detects concurrent writes
 		// within the same millisecond. _id rejects deleted/recreated sessions.

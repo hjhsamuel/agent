@@ -97,10 +97,10 @@ func (b *RingBuffer) publish(storage *ringBufferStorage, chunk *SSEChunk) {
 }
 
 // reconnect resumes after a retained sequence, or returns the latest retained
-// end marker itself when the sequence is missing. Without an end marker, it
-// reports no data so Next waits for a safe boundary.
+// oldest retained chunk when the sequence is missing. With no data, it
+// reports no data so Next waits for new chunks.
 // The third result records that the sequence was missing, so waiting consumers
-// keep waiting for a boundary even if a new buffer later reuses that sequence.
+// replay new data even if a new buffer later reuses that sequence.
 func (b *RingBuffer) reconnect(sequence uint64) (SSEChunk, bool, bool) {
 	if sequence == 0 {
 		chunk, ok := b.next(0)
@@ -119,7 +119,7 @@ func (b *RingBuffer) reconnect(sequence uint64) (SSEChunk, bool, bool) {
 			}
 		}
 	}
-	chunk, ok := b.latestEnd()
+	chunk, ok := b.next(0)
 	return chunk, ok, true
 }
 
