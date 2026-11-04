@@ -36,7 +36,7 @@ test('new session connects only on first send and waits for init before posting'
  const sending=vm.runInContext("$('prompt').value='**hello**';$('composer').onsubmit({preventDefault(){}})",s.context);
  assert.equal(s.streams.length,1);
  assert.ok(!s.calls.some(url=>url.endsWith('/message')));
- s.streams[0].handlers.init({data:'abc'});
+ s.streams[0].handlers.init({data:JSON.stringify({data:'abc'})});
  await sending;
  assert.ok(s.calls.includes('/cagent/v1/session/abc/message'));
  assert.equal(vm.runInContext("$('messages').children[0].children[1].innerHTML",s.context),'<p><strong>hello</strong></p>');
@@ -60,10 +60,10 @@ test('history loads three at a time, starts at bottom and preserves position on 
 
 test('thinking indicator remains separate from streamed Markdown and hides on completion',async()=>{
  const s=setup(1);await vm.runInContext("open('abc')",s.context);
- const stream=s.streams[0];stream.handlers.init({data:'abc'});
+ const stream=s.streams[0];stream.handlers.init({data:JSON.stringify({data:'abc'})});
  assert.equal(vm.runInContext('thinkingIndicator.hidden',s.context),false);
- stream.handlers.content({data:'**hello',lastEventId:'1'});
- stream.handlers.content({data:' world**',lastEventId:'2'});
+ stream.handlers.content({data:JSON.stringify({data:'**hello'}),lastEventId:'1'});
+ stream.handlers.content({data:JSON.stringify({data:' world**'}),lastEventId:'2'});
  assert.equal(vm.runInContext('answer.markdown',s.context),'**hello world**');
  assert.equal(vm.runInContext('answer.innerHTML',s.context),'<p><strong>hello world</strong></p>');
  assert.equal(vm.runInContext('thinkingIndicator.textContent',s.context),'思考中');
@@ -74,7 +74,7 @@ test('thinking indicator remains separate from streamed Markdown and hides on co
 
 test('streamed title immediately adds session and survives list refresh',async()=>{
  const s=setup(1);await vm.runInContext("open('abc')",s.context);
- s.streams[0].handlers.title({data:'新标题',lastEventId:'1'});
+ s.streams[0].handlers.title({data:JSON.stringify({data:'新标题'}),lastEventId:'1'});
  assert.equal(vm.runInContext("$('title').textContent",s.context),'新标题');
  assert.equal(vm.runInContext("$('sessions').children[0].textContent",s.context),'新标题');
  await vm.runInContext('sessions()',s.context);
@@ -95,11 +95,11 @@ test('selection follows session switches and clears for new conversation',async(
 test('SSE end drives completion without a polling timer and ignores old ends',async()=>{
  const s=setup(1);await vm.runInContext("open('abc')",s.context);
  assert.equal(s.timers.length,0);
- s.streams[0].handlers.end({data:'',lastEventId:'1'});
+ s.streams[0].handlers.end({data:JSON.stringify({data:''}),lastEventId:'1'});
  await new Promise(resolve=>setImmediate(resolve));
  assert.ok(!s.streams[0].closed);
  s.setStatus(2);
- s.streams[0].handlers.end({data:'',lastEventId:'2'});
+ s.streams[0].handlers.end({data:JSON.stringify({data:''}),lastEventId:'2'});
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(s.streams[0].closed,true);
  assert.equal(vm.runInContext("$('status').textContent",s.context),'已完成');
@@ -108,7 +108,7 @@ test('SSE end drives completion without a polling timer and ignores old ends',as
 
 test('existing session init reconciles completion when end was missed',async()=>{
  const s=setup(1);await vm.runInContext("open('abc')",s.context);
- s.setStatus(2);s.streams[0].handlers.init({data:'abc'});
+ s.setStatus(2);s.streams[0].handlers.init({data:JSON.stringify({data:'abc'})});
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(s.streams[0].closed,true);
  assert.equal(s.timers.length,0);
@@ -118,28 +118,28 @@ test('existing session init reconciles completion when end was missed',async()=>
 test('new reasoning uses a separate block and leaves previous thoughts collapsed',async()=>{
  const s=setup(1);await vm.runInContext("open('abc')",s.context);
  const stream=s.streams[0];
- stream.handlers.reasoning({data:'first thought',lastEventId:'1'});
+ stream.handlers.reasoning({data:JSON.stringify({data:'first thought'}),lastEventId:'1'});
  const first=vm.runInContext('reasoning',s.context);
  assert.equal(first.details.open,true);
- stream.handlers.content({data:'first answer',lastEventId:'2'});
+ stream.handlers.content({data:JSON.stringify({data:'first answer'}),lastEventId:'2'});
  assert.equal(first.details.open,false);
  const firstAnswer=vm.runInContext('answer',s.context);
- stream.handlers.reasoning({data:'new thought',lastEventId:'3'});
+ stream.handlers.reasoning({data:JSON.stringify({data:'new thought'}),lastEventId:'3'});
  const second=vm.runInContext('reasoning',s.context);
  assert.notEqual(second,first);
  const box=firstAnswer.box;
  assert.ok(box.children.indexOf(second.details)>box.children.indexOf(firstAnswer));
  assert.ok(box.children.indexOf(second.details)<box.children.indexOf(vm.runInContext('answer',s.context)));
- stream.handlers.content({data:'',lastEventId:'3'});
+ stream.handlers.content({data:JSON.stringify({data:''}),lastEventId:'3'});
  assert.equal(second.details.open,true);
  assert.equal(second.markdown,'new thought');
  assert.equal(first.markdown,'first thought');
  assert.equal(first.details.open,false);
- stream.handlers.reasoning({data:' continued',lastEventId:'4'});
+ stream.handlers.reasoning({data:JSON.stringify({data:' continued'}),lastEventId:'4'});
  assert.equal(vm.runInContext('reasoning',s.context),second);
  assert.equal(second.markdown,'new thought continued');
  assert.equal(first.details.open,false);
- stream.handlers.content({data:' more answer',lastEventId:'5'});
+ stream.handlers.content({data:JSON.stringify({data:' more answer'}),lastEventId:'5'});
  assert.equal(first.details.open,false);
  assert.equal(second.details.open,false);
  assert.equal(firstAnswer.markdown,'first answer');
@@ -148,8 +148,8 @@ test('new reasoning uses a separate block and leaves previous thoughts collapsed
 
 test('empty content events do not collapse active reasoning',async()=>{
  const s=setup(1);await vm.runInContext("open('abc')",s.context);
- s.streams[0].handlers.reasoning({data:'thinking',lastEventId:'1'});
- s.streams[0].handlers.content({data:'',lastEventId:'2'});
+ s.streams[0].handlers.reasoning({data:JSON.stringify({data:'thinking'}),lastEventId:'1'});
+ s.streams[0].handlers.content({data:JSON.stringify({data:''}),lastEventId:'2'});
  assert.equal(vm.runInContext('reasoning.details.open',s.context),true);
 });
 
@@ -165,10 +165,10 @@ test('each turn creates a fresh stream and closes it on completion',async()=>{
   const stream=s.streams[turn];
   assert.ok(!stream.closed);
   assert.equal(vm.runInContext("$('messages').children[0].children[1].markdown",s.context),'saved answer');
-  stream.handlers.init({data:'abc'});
-  stream.handlers.content({data:'answer',lastEventId:String(turn*2+1)});
+  stream.handlers.init({data:JSON.stringify({data:'abc'})});
+  stream.handlers.content({data:JSON.stringify({data:'answer'}),lastEventId:String(turn*2+1)});
   s.setStatus(2);
-  stream.handlers.end({data:'',lastEventId:String(turn*2+2)});
+  stream.handlers.end({data:JSON.stringify({data:''}),lastEventId:String(turn*2+2)});
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(stream.closed,true);
   assert.equal(vm.runInContext('source',s.context),undefined);
@@ -182,20 +182,30 @@ test('each turn creates a fresh stream and closes it on completion',async()=>{
 test('reconnect renders restarted sequence IDs and still deduplicates within the stream',async()=>{
  const s=setup(1);await vm.runInContext("open('abc')",s.context);
  const old=s.streams[0];
- old.handlers.content({data:'previous',lastEventId:'100'});
+ old.handlers.content({data:JSON.stringify({data:'previous'}),lastEventId:'100'});
  await vm.runInContext("answer=reasoning=undefined;subscribe(current,generation)",s.context);
  const stream=s.streams[1];
  assert.ok(stream.url.includes('seq=100'));
- stream.handlers.init({data:'abc'});
- stream.handlers.reasoning({data:'new thought',lastEventId:'1'});
+ stream.handlers.init({data:JSON.stringify({data:'abc'})});
+ stream.handlers.reasoning({data:JSON.stringify({data:'new thought'}),lastEventId:'1'});
  assert.equal(vm.runInContext('reasoning.markdown',s.context),'new thought');
- stream.handlers.content({data:'new answer',lastEventId:'2'});
- stream.handlers.content({data:'duplicate',lastEventId:'2'});
- old.handlers.content({data:'stale',lastEventId:'101'});
+ stream.handlers.content({data:JSON.stringify({data:'new answer'}),lastEventId:'2'});
+ stream.handlers.content({data:JSON.stringify({data:'duplicate'}),lastEventId:'2'});
+ old.handlers.content({data:JSON.stringify({data:'stale'}),lastEventId:'101'});
  assert.equal(vm.runInContext('answer.markdown',s.context),'new answer');
  assert.equal(vm.runInContext('answer.innerHTML',s.context),'<p>new answer</p>');
  assert.equal(vm.runInContext('seq',s.context),'2');
- s.setStatus(2);stream.handlers.end({data:'',lastEventId:'3'});
+ s.setStatus(2);stream.handlers.end({data:JSON.stringify({data:''}),lastEventId:'3'});
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(stream.closed,true);
+});
+
+test('JSON reasoning payload preserves whitespace across chunks',async()=>{
+ const s=setup(1);await vm.runInContext("open('abc')",s.context);
+ const chunks=['Let',' me',' think',' ','about',' this.\n  next line'];
+ chunks.forEach((data,i)=>s.streams[0].handlers.reasoning({data:JSON.stringify({data}),lastEventId:String(i+1)}));
+ assert.equal(vm.runInContext('reasoning.markdown',s.context),chunks.join(''));
+ assert.equal(vm.runInContext('decodeStreamData(JSON.stringify({data:JSON.stringify({id:"call",content:" hint"})}))',s.context),JSON.stringify({id:'call',content:' hint'}));
+ assert.throws(()=>vm.runInContext('decodeStreamData("plain text")',s.context));
+ assert.throws(()=>vm.runInContext('decodeStreamData("{}")',s.context));
 });

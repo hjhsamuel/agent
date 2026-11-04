@@ -87,8 +87,9 @@ function subscribe(id,version,onReady){
   let receivedSequence=false;
   const listen=(type,fn)=>stream.addEventListener(type,event=>{
     if(version!==generation||source!==stream)return;
+    let data;try{data=decodeStreamData(event.data);}catch{notice('无法解析事件数据。');return;}
     if(type!=='init'&&event.lastEventId){if(receivedSequence && BigInt(event.lastEventId)<=BigInt(seq))return;seq=event.lastEventId;receivedSequence=true;}
-    fn(event);
+    fn({data});
   });
   listen('init',event=>{
     current=event.data;connected=true;state(busy?'正在回复…':'已连接');$('delete').hidden=false;onReady?.();
@@ -115,10 +116,15 @@ function subscribe(id,version,onReady){
   stream.addEventListener('error',event=>{
     if(version!==generation||source!==stream)return;
     if(pendingConnection){const reject=pendingConnection;pendingConnection=undefined;stream.close();source=undefined;reject(Error('连接失败，请检查认证和网络后重试。'));return;}
-    if(typeof event.data==='string'){stream.close();source=undefined;connected=false;notice(event.data);busy=false;answer=reasoning=undefined;state('回复失败');return;}
+    if(typeof event.data==='string'){let data;try{data=decodeStreamData(event.data);}catch{data='无法解析事件数据。';}stream.close();source=undefined;connected=false;notice(data);busy=false;answer=reasoning=undefined;state('回复失败');return;}
     stream.close();connected=false;state('连接已断开');notice('连接已断开，3 秒后尝试恢复。认证失败时请更新 JWT。');
     if(current)setTimeout(()=>{if(version===generation)subscribe(current,version);},3000);
   });
+}
+function decodeStreamData(raw){
+  const payload=JSON.parse(raw);
+  if(!payload||typeof payload.data!=='string')throw Error('Invalid SSE payload');
+  return payload.data;
 }
 function input(item,version){
   if([...$('inputs').children].some(el=>el.dataset.id===item.id))return;

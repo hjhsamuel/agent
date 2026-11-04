@@ -90,7 +90,7 @@ func (s *Service) Stream(c *gin.Context, id string, seq uint64) error {
 	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 
-	c.SSEvent(string(ringbuffer.SSEChunkTypeInit), id)
+	c.SSEvent(string(ringbuffer.SSEChunkTypeInit), ringbuffer.SsePayload{Data: id})
 	c.Writer.Flush()
 
 	for {
@@ -102,7 +102,7 @@ func (s *Service) Stream(c *gin.Context, id string, seq uint64) error {
 			c.Render(-1, sse.Event{
 				Event: string(chunk.Type),
 				Id:    strconv.FormatUint(chunk.Sequence, 10),
-				Data:  chunk.Data,
+				Data:  ringbuffer.SsePayload{Data: chunk.Data},
 			})
 		}
 		c.Writer.Flush()

@@ -32,6 +32,11 @@ var (
 	ErrRingBufferInvalidChunk  = errors.New("invalid SSE chunk type or payload")
 )
 
+// SsePayload All SSE events use the same JSON envelope; text is never modified.
+type SsePayload struct {
+	Data string `json:"data"`
+}
+
 type SSEChunkType string
 
 const (

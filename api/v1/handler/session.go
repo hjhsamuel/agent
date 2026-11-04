@@ -111,8 +111,8 @@ func (a *Api) DeleteSession(c *gin.Context) {
 // Stream 订阅会话的 SSE 事件流。
 // @Summary 订阅会话事件流
 // @Description 未传 id 时为当前用户创建临时会话，传入 id 时订阅已有会话。
-// @Description 首个 init 事件的 data 为会话 ID；后续事件包含 id、event、data，event 类型为 content、reasoning、hitl 或 end。
-// @Description hitl 事件的 data 为包含 id 和 content 的 JSON 字符串；seq 用于断线重连，传入最后收到的事件序号。
+// @Description 所有 SSE data 均为含字符串字段 data 的 JSON 对象；init 的该字段为会话 ID，事件类型包括 init、title、content、reasoning、hitl、end、error。
+// @Description hitl 载荷的 data 字段为包含 id 和 content 的 JSON 字符串；end 的该字段为空字符串；seq 用于断线重连，传入最后收到的事件序号。
 // @Description 建立事件流前的错误返回 JSON；事件流开始后的错误通过关闭连接结束，不再返回 JSON。
 // @Tags 会话
 // @Produce text/event-stream,json
