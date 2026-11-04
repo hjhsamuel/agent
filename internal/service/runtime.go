@@ -493,7 +493,7 @@ func (s *Service) run(
 ) ([]*schema.WaitInput, error) {
 	inputRequiredReqs := make([]*schema.WaitInput, 0)
 
-	events := r.Run(ctx, user, sessionId.Hex(), msg, agent.RunConfig{StreamingMode: agent.StreamingModeSSE})
+	events := r.RunWithRemoteResults(ctx, user, sessionId.Hex(), msg, agent.RunConfig{StreamingMode: agent.StreamingModeSSE})
 	for event, err := range events {
 		if err != nil {
 			return nil, err

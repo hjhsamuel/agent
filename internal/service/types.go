@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"iter"
 	"sync"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/runner"
 	"google.golang.org/adk/v2/server/adka2a/v2"
 	"google.golang.org/adk/v2/session"
@@ -22,16 +24,11 @@ type sessionLife struct {
 	finishOnce sync.Once
 }
 
-func isA2AInputRequired(event *session.Event) bool {
-	response, _ := event.CustomMetadata[adka2a.ToADKMetaKey("response")].(map[string]any)
-	status, _ := response["status"].(map[string]any)
-	state, _ := status["state"].(string)
-	return state == string(a2a.TaskStateInputRequired)
-}
-
 func buildInputRequiredMessage(inputs []*schema.WaitInput) *genai.Content {
 	parts := make([]*genai.Part, 0, len(inputs))
 	for _, item := range inputs {
+		// Preserve the correlation ID through the runner. The A2A callback
+		// converts text-only answers at dispatch after restoring TaskID.
 		parts = append(parts, &genai.Part{
 			FunctionResponse: &genai.FunctionResponse{
 				ID:   item.ID,
@@ -79,4 +76,31 @@ type AgentGroup struct {
 type Runner struct {
 	Name string
 	*runner.Runner
+}
+
+// RunWithRemoteResults lets the main model summarize a completed remote task.
+// A nil message continues from persisted history without adding another user turn.
+func (r *Runner) RunWithRemoteResults(ctx context.Context, user, id string, msg *genai.Content, cfg agent.RunConfig) iter.Seq2[*session.Event, error] {
+	return func(yield func(*session.Event, error) bool) {
+		for {
+			var last *session.Event
+			for event, err := range r.Run(ctx, user, id, msg, cfg) {
+				if !yield(event, err) || err != nil {
+					return
+				}
+				if event != nil && !event.Partial && event.Actions.Compaction == nil {
+					last = event
+				}
+			}
+			if ctx.Err() != nil || last == nil || last.Author == r.Name {
+				return
+			}
+			response, _ := last.CustomMetadata[adka2a.ToADKMetaKey("response")].(map[string]any)
+			status, _ := response["status"].(map[string]any)
+			if status["state"] != string(a2a.TaskStateCompleted) {
+				return
+			}
+			msg = nil
+		}
+	}
 }
