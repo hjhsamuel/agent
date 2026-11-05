@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 
@@ -32,7 +33,7 @@ type Service struct {
 
 // initLocalTools runs during construction, before API access and runner recovery.
 func (s *Service) initLocalTools() error {
-	tools, err := s.store.FindTools(bson.M{"type": schema.ToolLocal})
+	tools, err := s.store.FindTools(bson.M{"type": schema.ToolLocal, "state": schema.ToolStatusOnline})
 	if err != nil {
 		return err
 	}
@@ -42,6 +43,34 @@ func (s *Service) initLocalTools() error {
 			return fmt.Errorf("duplicate local tool %q", item.Name)
 		}
 		versions[item.Name] = item.Version
+	}
+	for _, item := range tools {
+		if err := local.ValidateName(item.Name); err != nil {
+			return err
+		}
+		if item.Version < 0 {
+			return fmt.Errorf("invalid version for tool %q", item.Name)
+		}
+		version := item.Version
+		if version == 0 {
+			version, err = s.store.NextToolVersion(item.Name)
+			if err != nil {
+				return err
+			}
+		}
+		if _, err := os.Lstat(local.VersionDir(item.Name, version)); os.IsNotExist(err) {
+			if err := installToolVersion(item.Type, item.Name, item.Url, version); err != nil {
+				return fmt.Errorf("install local tool %q: %w", item.Name, err)
+			}
+		} else if err != nil {
+			return err
+		}
+		if version != item.Version {
+			if err := s.store.UpdateTool(bson.M{"_id": item.ID}, bson.M{"$set": bson.M{"version": version}}); err != nil {
+				return err
+			}
+		}
+		versions[item.Name] = version
 	}
 	return local.Cleanup("tools", versions)
 }
@@ -171,7 +200,7 @@ func NewService() (*Service, error) {
 	s.store = storage
 
 	if err = s.initLocalTools(); err != nil {
-		return nil, fmt.Errorf("clean local tool versions: %w", err)
+		return nil, fmt.Errorf("initialize local tools: %w", err)
 	}
 
 	// adk session storage
