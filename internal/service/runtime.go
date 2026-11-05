@@ -9,16 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hjhsamuel/agent/internal/toolx/local"
-
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/hjhsamuel/agent/api/common"
 	"github.com/hjhsamuel/agent/internal/service/ringbuffer"
 	"github.com/hjhsamuel/agent/internal/store/schema"
 	"github.com/hjhsamuel/agent/internal/toolx"
+	"github.com/hjhsamuel/agent/internal/toolx/local"
 	"github.com/hjhsamuel/agent/pkg/token"
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
 	"google.golang.org/adk/v2/auth"
@@ -103,12 +103,17 @@ func (s *Service) getAgentTree() (*AgentGroup, error) {
 		return nil, errors.New("has no main agent")
 	}
 
+	groups := make([]*AgentGroup, 0)
 	for _, item := range groupAgent {
 		if item.Name == "" {
 			continue
 		}
-		mainAgent.Agents = append(mainAgent.Agents, item)
+		groups = append(groups, item)
 	}
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].ID.Hex() < groups[j].ID.Hex()
+	})
+	mainAgent.Agents = groups
 
 	return mainAgent, nil
 }
@@ -119,8 +124,6 @@ func (s *Service) buildAgent(
 	agentTool map[bson.ObjectID]map[schema.ToolType][]*schema.Tool,
 	llmModel model.LLM,
 ) (agent.Agent, error) {
-	// Stable ordering preserves the prompt prefix across runner rebuilds.
-	sort.Slice(cfg.Agents, func(i, j int) bool { return cfg.Agents[i].Name < cfg.Agents[j].Name })
 	subAgents := make([]agent.Agent, 0, len(cfg.Agents))
 	for _, child := range cfg.Agents {
 		agt, err := s.buildAgent(user, child, agentTool, llmModel)
@@ -231,7 +234,10 @@ func (s *Service) buildRunner(user *common.Auth, obj *schema.Session) (*Runner, 
 		return nil, err
 	}
 
-	tools, err := s.store.FindTools(bson.M{"state": schema.ToolStatusOnline})
+	tools, err := s.store.FindTools(
+		bson.M{"state": schema.ToolStatusOnline},
+		options.Find().SetSort(bson.M{"_id": 1}),
+	)
 	if err != nil {
 		return nil, err
 	}

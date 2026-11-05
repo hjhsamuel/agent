@@ -27,11 +27,12 @@ func NewA2A(path string, cred auth.CredentialProvider) (agent.Agent, error) {
 		return nil, err
 	}
 
+	// 将 skill 描述配置在 agent 描述中，尽量保证具备完整的输入信息
 	var b strings.Builder
 	b.WriteString(card.Description)
 	b.WriteString("\n\nAvailable skills:\n")
 	for _, item := range card.Skills {
-		_, _ = fmt.Fprintf(&b, "- %s (id: %s): %s\n", item.Name, item.ID, item.Description)
+		_, _ = fmt.Fprintf(&b, "- %s: %s\n", item.Name, item.Description)
 	}
 
 	// 由于 remoteagent 内部没有实现 GetTask 轮询，因此目前强制使用 SSE 方式

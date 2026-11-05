@@ -38,7 +38,11 @@ func (d *Store) GetAgents(kind schema.AgentType) ([]*schema.Agent, error) {
 
 func (d *Store) AllAgent() ([]*schema.Agent, error) {
 	ctx := context.Background()
-	cursor, err := d.getCollection(schema.AgentCollection).Find(ctx, bson.M{})
+	cursor, err := d.getCollection(schema.AgentCollection).Find(
+		ctx,
+		bson.M{},
+		options.Find().SetSort(bson.M{"_id": 1}),
+	)
 	if err != nil {
 		return nil, err
 	}
