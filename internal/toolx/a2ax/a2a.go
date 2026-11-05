@@ -27,47 +27,25 @@ func NewA2A(path string, cred auth.CredentialProvider) (agent.Agent, error) {
 		return nil, err
 	}
 
+	var b strings.Builder
+	b.WriteString(card.Description)
+	b.WriteString("\n\nAvailable skills:\n")
+	for _, item := range card.Skills {
+		_, _ = fmt.Fprintf(&b, "- %s (id: %s): %s\n", item.Name, item.ID, item.Description)
+	}
+
 	// 由于 remoteagent 内部没有实现 GetTask 轮询，因此目前强制使用 SSE 方式
 	return remoteagent.NewA2A(remoteagent.A2AConfig{
 		Name:                   card.Name,
-		Description:            card.Description,
+		Description:            b.String(),
 		AgentCard:              card,
 		Auth:                   cred,
-		GenAIPartConverter:     userInputPart,
 		BeforeRequestCallbacks: []remoteagent.BeforeA2ARequestCallback{resumeTextInput},
 		AfterRequestCallbacks:  []remoteagent.AfterA2ARequestCallback{requestTextInput},
 		MessageSendConfig: &a2a.SendMessageConfig{
 			ReturnImmediately: true,
 		},
 	})
-}
-
-// ADK renders other agents' execution events as synthetic user messages.
-// Only convert actual persisted user events (or a scoped invocation's input),
-// so tool traces never become part of the remote server's user input.
-func userInputPart(base context.Context, event *session.Event, part *genai.Part) (*a2a.Part, error) {
-	ctx, ok := base.(agent.InvocationContext)
-	if !ok {
-		return nil, fmt.Errorf("A2A input conversion requires an invocation context")
-	}
-	if event == nil || event.Author != "user" || part == nil || part.Thought {
-		return nil, nil
-	}
-	actualInput := event.Content != nil && event.Content == ctx.UserContent()
-	if !actualInput {
-		events := ctx.Session().Events()
-		for i := events.Len() - 1; i >= 0; i-- {
-			original := events.At(i)
-			if original != nil && original.ID == event.ID && original.Author == "user" && original.IsolationScope == ctx.IsolationScope() {
-				actualInput = true
-				break
-			}
-		}
-	}
-	if !actualInput {
-		return nil, nil
-	}
-	return adka2a.ToA2APart(part, event.LongRunningToolIDs)
 }
 
 // Register a real pending call before the runner persists the remote event.
