@@ -18,3 +18,25 @@ export function toolBody(data, kind, editing=false, original) {
  }
  return body;
 }
+export async function toolAgentOptions(api) {
+ const main=await api('/agent/main');
+ const options=[],seen=new Set();
+ async function visit(agent,path){
+  if(seen.has(agent.id))return;
+  seen.add(agent.id);options.push([agent.id,path]);
+  if(Number(agent.type)===2)return;
+  for(const type of Number(agent.type)===0?[1,2]:[2]){
+   let offset='';
+   const cursors=new Set();
+   while(true){
+    const page=await api('/agent/'+encodeURIComponent(agent.id)+'/sub?'+new URLSearchParams({type,offset,limit:30}));
+    for(const child of page.data||[])await visit(child,path+' / '+child.name);
+    if(!page.data?.length||!page.offset||cursors.has(page.offset))break;
+    offset=page.offset;cursors.add(offset);
+   }
+  }
+ }
+ await visit(main,main.name);
+ return options;
+}
+

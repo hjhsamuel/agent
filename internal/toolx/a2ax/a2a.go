@@ -41,12 +41,38 @@ func NewA2A(path string, cred auth.CredentialProvider) (agent.Agent, error) {
 		Description:            b.String(),
 		AgentCard:              card,
 		Auth:                   cred,
+		GenAIPartConverter:     compactContextPart,
 		BeforeRequestCallbacks: []remoteagent.BeforeA2ARequestCallback{resumeTextInput},
 		AfterRequestCallbacks:  []remoteagent.AfterA2ARequestCallback{requestTextInput},
 		MessageSendConfig: &a2a.SendMessageConfig{
 			ReturnImmediately: true,
 		},
 	})
+}
+
+// ADK wraps other agents' events as user context before converting parts.
+// Keep their useful output, but omit internal routing calls and boilerplate.
+func compactContextPart(_ context.Context, event *session.Event, part *genai.Part) (*a2a.Part, error) {
+	if event.Content != nil && len(event.Content.Parts) > 0 && event.Content.Parts[0] != nil && event.Content.Parts[0].Text == "For context:" {
+		if part == event.Content.Parts[0] {
+			return nil, nil
+		}
+		if strings.HasPrefix(part.Text, "[") {
+			if end := strings.Index(part.Text, "] "); end >= 0 {
+				body := part.Text[end+2:]
+				if strings.HasPrefix(body, "called tool transfer_to_agent with parameters:") {
+					return nil, nil
+				}
+				if strings.HasPrefix(body, "transfer_to_agent tool returned result:") {
+					return nil, nil
+				}
+				if text, ok := strings.CutPrefix(body, "said: "); ok {
+					return a2a.NewTextPart(part.Text[:end+1] + " " + text), nil
+				}
+			}
+		}
+	}
+	return adka2a.ToA2APart(part, event.LongRunningToolIDs)
 }
 
 // Register a real pending call before the runner persists the remote event.

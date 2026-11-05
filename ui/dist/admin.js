@@ -1,6 +1,6 @@
 import {modelBody,modelValues} from './model-form.js';
 import {markdownEditor} from './markdown.js';
-import {toolBody,toolValues} from './tool-form.js';
+import {toolBody,toolValues,toolAgentOptions} from './tool-form.js';
 const node=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
 const chat=document.querySelector('main');
 const panel=node('main');panel.id='admin';panel.hidden=true;document.body.append(panel);
@@ -39,9 +39,13 @@ async function agents(){const version=view('Agent 管理');content.append(button
 async function children(parent,type,offset='',append=false){const version=append?revision:view(parent.name+(type===1?' · 分组':' · 子 Agent'));if(!append)content.append(button('返回主 Agent',agents));const data=await api('/agent/'+parent.id+'/sub?'+new URLSearchParams({type,offset,limit:30}));if(version!==revision)return;for(const a of data.data){const el=card(a.name,a.description);agentActions(el,a,()=>children(parent,type));}if(!data.data.length)content.append(node('p','暂无记录。'));if(data.data.length===30){const more=button('加载更多',async()=>{await children(parent,type,data.offset,true);more.remove();});content.append(more);}}
 const kinds=[['0','Local'],['1','A2A'],['2','MCP'],['3','Skill']];
 const toolFields=[text('name','名称'),select('kind','类型',kinds),text('url','远程服务 / 压缩包地址'),text('agent','关联 Agent ID（留空不关联）',false)];
-function toolEditor(t={}){
+async function toolEditor(t={}){
  const editing=!!t.id;
- const fields=toolFields.filter(f=>!editing||f.key!=='kind').map(f=>editing&&f.key==='url'?{...f,required:false,omitEmpty:true,label:'新地址（留空不修改）'}:editing&&f.key==='agent'?{...f,label:'关联 Agent ID（留空不修改）'}:f);
+ const version=revision;
+ const options=await toolAgentOptions(api);
+ if(version!==revision)return;
+ if(t.agent_id&&!options.some(([id])=>id===t.agent_id))options.push([t.agent_id,'当前关联 Agent（不可用）']);
+ const fields=toolFields.map(f=>f.key==='agent'?select('agent','关联 Agent',[['',editing?'保持原关联':'不关联'],...options]):f).filter(f=>!editing||f.key!=='kind').map(f=>editing&&f.key==='url'?{...f,required:false,omitEmpty:true,label:'新地址（留空不修改）'}:editing&&f.key==='agent'?{...f,label:'关联 Agent'}:f);
  fields.push(select('authMode','认证方式',[['keep',editing?'保持原认证':'默认认证（用户 ID）'],['header','Header API Key'],['bearer','Bearer Token']]),text('authKey','Header 名称（例如 X-Api-Key）',false),{...text('authValue','凭据值',false),type:'password'});
  edit(editing?'编辑工具':'新增工具',fields,toolValues(t),async d=>{await api(editing?'/tool/'+t.id:'/tool',editing?'PUT':'POST',toolBody(d,editing?t.type:d.kind,editing,t.credential));await tools();},(form,inputs)=>{
   const hint=node('p');form.append(hint);inputs.authValue.autocomplete='new-password';
@@ -58,7 +62,7 @@ function toolEditor(t={}){
 let filter={};
 async function tools(offset='',append=false){const version=append?revision:view('工具管理');if(!append){content.append(button('新增工具',()=>toolEditor()),button('筛选',()=>edit('筛选工具',[{...text('agent','Agent ID（留空查询未关联）',false)},select('type','工具类型',[['','全部'],...kinds]),select('state','状态',[['','全部'],['0','准备中'],['1','上线'],['2','下线']])],filter,async d=>{filter={agent:d.agent};if(d.type!=='')filter.type=Number(d.type);if(d.state!=='')filter.state=Number(d.state);await tools();})),button('清除筛选',()=>{filter={};return tools();}));}
  const data=await api('/tool/find','POST',{...filter,offset,limit:30});if(version!==revision)return;for(const t of data.data){const el=card(t.name,`${kinds[t.type]?.[1]||t.type} · ${['准备中','上线','下线'][t.state]} · ${t.link?'已关联':'未关联'}`);el.append(button('详情与编辑',()=>tool(t.id)),button(t.state===1?'下线':'上线',async()=>{await api('/tool/'+t.id+'/state','PUT',{state:t.state===1?2:1});await tools();}),button('删除',async()=>{if(!confirm('确定删除工具「'+t.name+'」？删除后无法恢复。'))return;await api('/tool/'+t.id,'DELETE');await tools();}));}if(!data.data.length)content.append(node('p','暂无工具。'));if(data.data.length===30){const more=button('加载更多',async()=>{await tools(data.offset,true);more.remove();});content.append(more);}}
-async function tool(id){toolEditor(await api('/tool/'+id));}
+async function tool(id){await toolEditor(await api('/tool/'+id));}
 function secrets(){view('加密密钥');const el=card('生成新的加密密钥版本','为后端生成 KMS 密钥并写入后端 .env，用于加密模型 API Key。已有版本需保留；可在 API Key 编辑中重新加密到最新版本。');el.append(button('生成新版本',async()=>{if(!confirm('确定生成新的加密密钥版本并写入后端 .env？'))return;const data=await api('/secret','POST',{});alert.textContent='已生成密钥版本：'+data.version;}));}
 async function show(name){chat.hidden=name!=='聊天';panel.hidden=name==='聊天';for(const b of nav.children)b.classList.toggle('active',b.textContent===name);if(name==='聊天'){revision++;return;}await ({'模型':models,'Agent':agents,'工具':tools,'加密密钥':secrets}[name])();}
 for(const name of ['聊天','模型','Agent','工具','加密密钥'])nav.append(button(name,()=>show(name)));
