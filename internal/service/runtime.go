@@ -113,7 +113,7 @@ func (s *Service) getAgentTree() (*AgentGroup, error) {
 	sort.Slice(groups, func(i, j int) bool {
 		return groups[i].ID.Hex() < groups[j].ID.Hex()
 	})
-	mainAgent.Agents = groups
+	mainAgent.Agents = append(mainAgent.Agents, groups...)
 
 	return mainAgent, nil
 }
