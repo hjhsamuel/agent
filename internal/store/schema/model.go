@@ -39,8 +39,9 @@ type Model struct {
 }
 
 type ModelConfig struct {
-	ContextLimit int64          `bson:"context_limit"`
-	Extra        map[string]any `bson:"extra"`
+	ContextLimit int64          `bson:"context_limit"` // 上下文限制
+	Thinking     map[string]any `bson:"thinking"`      // 开启深度思考使用的配置
+	Extra        map[string]any `bson:"extra"`         // 永久启用的配置
 }
 
 type ApiKey struct {

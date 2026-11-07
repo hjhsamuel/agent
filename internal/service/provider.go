@@ -66,6 +66,9 @@ func (s *Service) newModel(rsp *schema.Model) (model.LLM, error) {
 	cfg := &openaimodel.ClientConfig{
 		APIKey:  key,
 		BaseURL: rsp.Url,
+		//Options: []option.RequestOption{
+		//	option.WithJSONSet(),
+		//},
 	}
 	switch rsp.Mode {
 	case schema.ChatCompletions:
