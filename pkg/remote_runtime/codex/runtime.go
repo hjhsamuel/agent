@@ -16,18 +16,18 @@ import (
 	"sync"
 )
 
-// Config belongs to one user. ConfigTOML is that user's complete Codex config,
+// Config belongs to one user. Codex is that user's structured Codex config,
 // including [mcp_servers.*]. Credentials must be provisioned in the user's home
 // or supplied through Env. Do not run two instances with the same user/home.
 type Config struct {
-	Binary     string
-	RootDir    string
-	UserID     string
-	ConfigTOML string
-	Dir        string
-	Env        []string
-	Output     io.Writer
-	Stderr     io.Writer
+	Binary  string
+	RootDir string
+	UserID  string
+	Codex   CodexConfig
+	Dir     string
+	Env     []string
+	Output  io.Writer
+	Stderr  io.Writer
 	// Stream callbacks run synchronously in receive order. They must honor ctx
 	// and must not reenter Runtime. Errors propagate to the current operation.
 	// Output still receives only assistant text; use io.Discard to disable it.
@@ -58,6 +58,10 @@ func Start(ctx context.Context, cfg Config) (*Runtime, error) {
 	if cfg.RootDir == "" || cfg.UserID == "" {
 		return nil, errors.New("codex: RootDir and UserID are required")
 	}
+	data, err := cfg.Codex.MarshalTOML()
+	if err != nil {
+		return nil, err
+	}
 	home, err := filepath.Abs(filepath.Join(cfg.RootDir, fmt.Sprintf("%x", sha256.Sum256([]byte(cfg.UserID)))))
 	if err != nil {
 		return nil, err
@@ -65,7 +69,7 @@ func Start(ctx context.Context, cfg Config) (*Runtime, error) {
 	if err = os.MkdirAll(home, 0700); err != nil {
 		return nil, err
 	}
-	if err = os.WriteFile(filepath.Join(home, "config.toml"), []byte(cfg.ConfigTOML), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(home, "config.toml"), data, 0600); err != nil {
 		return nil, err
 	}
 	binary := cfg.Binary
@@ -254,7 +258,11 @@ func (r *Runtime) call(ctx context.Context, method string, params any, handler H
 func (r *Runtime) StartThread(ctx context.Context) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	raw, err := r.call(ctx, MethodThreadStart, ThreadStartParams{ApprovalPolicy: "on-request"}, nil)
+	policy := r.config.Codex.ApprovalPolicy
+	if policy == "" {
+		policy = "on-request"
+	}
+	raw, err := r.call(ctx, MethodThreadStart, ThreadStartParams{ApprovalPolicy: policy}, nil)
 	if err != nil {
 		return "", err
 	}
