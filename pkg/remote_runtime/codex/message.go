@@ -26,6 +26,7 @@ const (
 	MethodInitialize                = "initialize"
 	MethodInitialized               = "initialized"
 	MethodThreadStart               = "thread/start"
+	MethodThreadResume              = "thread/resume"
 	MethodTurnStart                 = "turn/start"
 	MethodAgentMessageDelta         = "item/agentMessage/delta"
 	MethodReasoningSummaryTextDelta = "item/reasoning/summaryTextDelta"
@@ -88,6 +89,15 @@ type Thread struct {
 }
 
 type ThreadStartResult struct {
+	Thread Thread `json:"thread"`
+}
+
+type ThreadResumeParams struct {
+	ThreadID     string `json:"threadId"`
+	ExcludeTurns bool   `json:"excludeTurns"`
+}
+
+type ThreadResumeResult struct {
 	Thread Thread `json:"thread"`
 }
 

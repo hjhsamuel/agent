@@ -153,7 +153,12 @@ func Start(ctx context.Context, cfg Config) (*Runtime, error) {
 
 // Close is idempotent and terminates and reaps the app-server process.
 func (r *Runtime) Close() error {
-	r.closeOnce.Do(func() { close(r.done); r.stdin.Close(); _ = r.cmd.Process.Kill(); r.waitErr = r.cmd.Wait() })
+	r.closeOnce.Do(func() {
+		close(r.done)
+		r.stdin.Close()
+		_ = r.cmd.Process.Kill()
+		r.waitErr = r.cmd.Wait()
+	})
 	// A forced termination is expected here.
 	var exit *exec.ExitError
 	if errors.As(r.waitErr, &exit) {
@@ -269,6 +274,36 @@ func (r *Runtime) StartThread(ctx context.Context) (string, error) {
 	var result ThreadStartResult
 	err = json.Unmarshal(raw, &result)
 	return result.Thread.ID, err
+}
+
+// ResumeThread loads a persisted conversation into this process. Start the new
+// Runtime with the same RootDir and UserID, and preserve that user's CODEX_HOME
+// directory. The caller must persist the thread ID and verify its ownership.
+// Resume restores history, not an interrupted turn or its pending HITL request.
+// A missing thread is returned as an error; no replacement conversation is made.
+func (r *Runtime) ResumeThread(ctx context.Context, threadID string) (string, error) {
+	if strings.TrimSpace(threadID) == "" {
+		return "", errors.New("codex: threadID is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	raw, err := r.call(ctx, MethodThreadResume, ThreadResumeParams{
+		ThreadID: threadID, ExcludeTurns: true,
+	}, nil)
+	if err != nil {
+		return "", err
+	}
+	var result ThreadResumeResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return "", err
+	}
+	if result.Thread.ID != threadID {
+		return "", fmt.Errorf("codex: resume returned thread %q, expected %q", result.Thread.ID, threadID)
+	}
+	return result.Thread.ID, nil
 }
 
 // Chat prints streamed assistant text and waits for completion. Cancellation
